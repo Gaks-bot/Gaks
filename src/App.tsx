@@ -22,6 +22,21 @@ interface AlertItem {
   isMuted?: boolean;
 }
 
+interface AnalysisHistoryItem {
+  id: string;
+  timestamp: string;
+  image: string;
+  strategyUsed: string;
+  report: {
+    signal: 'BUY' | 'SELL' | 'HOLD';
+    level: string;
+    tp: string;
+    sl: string;
+    confidence: string;
+    reason: string;
+  };
+}
+
 export function formatPrice(pair: string, price: number): string {
   if (
     pair.includes('JPY') ||
@@ -240,43 +255,39 @@ export default function App() {
     { pair: 'ETH/USD', name: 'Ethereum / US Dollar', price: 3480.00, change: 1.87 },
   ]);
 
-  // --- Secure Supabase Live Rates & Local Backup Engine ---
+  // --- Secure Twelve Data Live Rates & Local Backup Engine ---
   // Calculates live forex rate for the market page and preferred TP/SL with 5 sec auto update
   useEffect(() => {
     const fetchRatesAndFluctuate = async () => {
       try {
-        const isPlaceholder = SUPABASE_URL.includes('your-supabase-project') || SUPABASE_ANON_KEY.includes('your-supabase-anon-key');
-        if (isPlaceholder) {
-          throw new Error('Placeholder credentials active');
-        }
-
-        // POST request to securely proxy Twelve Data live forex rates via Supabase Edge Function
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/forex-rates`, {
+        // POST request to securely proxy Twelve Data live forex rates via local proxy
+        const response = await fetch('/api/forex-rates', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ pairs: marketPairs.map(p => p.pair) })
         });
 
         if (!response.ok) {
-          throw new Error(`Edge Function returned HTTP ${response.status}`);
+          throw new Error(`Proxy returned HTTP ${response.status}`);
         }
 
         const data = await response.json();
         if (data && data.rates) {
           setMarketPairs(prevPairs =>
             prevPairs.map(p => {
-              const livePrice = typeof data.rates[p.pair] === 'number' ? data.rates[p.pair] : parseFloat(data.rates[p.pair]);
-              if (livePrice && !isNaN(livePrice)) {
-                const prevPrice = p.price;
-                const pctChange = prevPrice > 0 ? parseFloat(((livePrice - prevPrice) / prevPrice * 100).toFixed(2)) : p.change;
-                return {
-                  ...p,
-                  price: livePrice,
-                  change: pctChange
-                };
+              const rateData = data.rates[p.pair];
+              if (rateData) {
+                const livePrice = typeof rateData.price === 'number' ? rateData.price : parseFloat(rateData.price);
+                const pctChange = typeof rateData.change === 'number' ? rateData.change : parseFloat(rateData.change);
+                if (!isNaN(livePrice)) {
+                  return {
+                    ...p,
+                    price: livePrice,
+                    change: isNaN(pctChange) ? p.change : pctChange
+                  };
+                }
               }
               return p;
             })
@@ -285,7 +296,7 @@ export default function App() {
         }
       } catch (err) {
         // Safe logger wrapper
-        console.warn('Using local volatility engine (Supabase function is not configured yet):', err);
+        console.warn('Using local volatility engine (Twelve keys not set or connection timed out):', err);
       }
 
       // High-Fidelity Local fluctuation engine fallback
@@ -317,9 +328,9 @@ export default function App() {
       );
     };
 
-    // Perform rate check immediately, then configure the 5-sec auto update (5000ms)
+    // Perform rate check immediately, then configure the 15-sec auto update (15000ms) to conserve API limit space
     fetchRatesAndFluctuate();
-    const interval = setInterval(fetchRatesAndFluctuate, 5000);
+    const interval = setInterval(fetchRatesAndFluctuate, 15000);
 
     return () => clearInterval(interval);
   }, []);
@@ -369,6 +380,43 @@ export default function App() {
     reason: string;
   } | null>(null);
 
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>(() => {
+    try {
+      const stored = localStorage.getItem('gaks_chart_analysis_history');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
+
+  const saveAnalysisToHistory = (image: string, strategy: string, report: {
+    signal: 'BUY' | 'SELL' | 'HOLD';
+    level: string;
+    tp: string;
+    sl: string;
+    confidence: string;
+    reason: string;
+  }) => {
+    const newItem: AnalysisHistoryItem = {
+      id: 'analysis-' + Date.now(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      image,
+      strategyUsed: strategy,
+      report
+    };
+
+    setAnalysisHistory(prev => {
+      const updated = [newItem, ...prev].slice(0, 15);
+      try {
+        localStorage.setItem('gaks_chart_analysis_history', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('LocalStorage limit exceeded, keeping history in memory only.');
+      }
+      return updated;
+    });
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -414,7 +462,7 @@ export default function App() {
     fileInputRef.current?.click();
   };
 
-  // --- Secure Supabase Edge Function Call with Graceful Fallback ---
+  // --- Secure Gemini API Backend Call with Graceful Fallback ---
   const runAnalysis = async () => {
     if (isAnalyzing) return;
     setIsAnalyzing(true);
@@ -422,28 +470,21 @@ export default function App() {
     setAnalysisLogs([
       'Initiating chart analysis layout scanner...',
       'Securing payloads and preparing API gateway metadata...',
-      'Requesting analysis from Supabase Edge Function: "analyze-chart"...'
+      'Requesting analysis from secure backend: "Gemini 3.5 Flash"...'
     ]);
 
     try {
-      const isPlaceholder = SUPABASE_URL.includes('your-supabase-project') || SUPABASE_ANON_KEY.includes('your-supabase-anon-key');
-      if (isPlaceholder) {
-        throw new Error('Supabase project URL & Anon Key are set to default placeholder variables. Set real values in settings to enable Edge execution.');
-      }
-
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout protection
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout protection
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-chart`, {
+      const response = await fetch('/api/analyze-chart', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           image: chartImage, // contains base64 image data string
-          strategy: strategyText,
-          timestamp: new Date().toISOString()
+          strategy: strategyText
         }),
         signal: controller.signal
       });
@@ -451,37 +492,42 @@ export default function App() {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Supabase Edge Function answered with error status: ${response.status}`);
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `Server answered with error status: ${response.status}`);
       }
 
       setAnalysisLogs(prev => [
         ...prev,
-        'Successfully fetched secure feedback from "analyze-chart" edge function ✓',
+        'Successfully fetched secure feedback from Gemini AI scanner ✓',
         'Parsing strategy validation & target recommendations...'
       ]);
 
       const data = await response.json();
 
       if (data && (data.signal || data.reason)) {
-        setAnalysisReport({
+        const report = {
           signal: (data.signal || 'HOLD').toUpperCase() as 'BUY' | 'SELL' | 'HOLD',
           level: data.level || (1.1749).toFixed(4),
           tp: data.tp || (1.1749 * 1.015).toFixed(4),
           sl: data.sl || (1.1749 * 0.992).toFixed(4),
           confidence: data.confidence || '91%',
           reason: data.reason || 'Chart analysed successfully matching your chosen active strategy guidelines.'
-        });
-        setAnalysisLogs(prev => [...prev, 'Secure Edge Function analysis finished successfully!']);
+        };
+        setAnalysisReport(report);
+        if (chartImage) {
+          saveAnalysisToHistory(chartImage, strategyText, report);
+        }
+        setAnalysisLogs(prev => [...prev, 'Gemini AI analysis finished successfully!']);
       } else {
         throw new Error('Invalid or empty response structure from remote edge service.');
       }
     } catch (err: any) {
-      console.warn('Supabase Edge analysis info:', err.message || err);
+      console.warn('Gemini analysis info:', err.message || err);
       
       const errorMsg = err.message || 'Network failure or timeout context.';
       setAnalysisLogs(prev => [
         ...prev,
-        `⚠️ Edge Function Call failed: ${errorMsg}`,
+        `⚠️ Call failed: ${errorMsg}`,
         'Engaging premium on-device fallback analysis module as backup...',
         'Scanning chart screenshot for price action patterns...',
         'Analyzing market structure on H1 and M15 levels...',
@@ -496,14 +542,19 @@ export default function App() {
         const randomSL = (1.1749 + (Math.random() - 0.5) * 0.01).toFixed(4);
         const confidences = ['84%', '88%', '91%', '95%'];
 
-        setAnalysisReport({
+        const report = {
           signal: chosenSignal,
           level: (1.1749 + (Math.random() - 0.5) * 0.005).toFixed(4),
           tp: randomTP,
           sl: randomSL,
           confidence: confidences[Math.floor(Math.random() * confidences.length)],
           reason: `[Edge Fallback Engaged] Chosen setup: ${chosenSignal} entry detected at localized value zones matching active strategy criteria. To use real-time Cloud models, replace your Supabase credentials in settings.`
-        });
+        };
+
+        setAnalysisReport(report);
+        if (chartImage) {
+          saveAnalysisToHistory(chartImage, strategyText, report);
+        }
         setAnalysisLogs(prev => [...prev, 'AI Scan complete ✓ (Local Fallback mode)']);
       }, 2500);
     } finally {
@@ -855,16 +906,13 @@ export default function App() {
         <div id="analyze" className={`page ${currentPage === 'analyze' ? 'active' : ''}`}>
           <div className="strategy-header">
             <h2>Chart Analysis</h2>
-            <span style={{ color: 'var(--text-muted)' }} className="cursor-pointer" onClick={() => {
-              if (chartImage) {
-                alert("History cleared!");
-                setChartImage(null);
-                setAnalysisReport(null);
-              } else {
-                alert("No history found.");
-              }
-            }}>
+            <span style={{ color: 'var(--text-muted)' }} className="cursor-pointer flex items-center gap-1.5 hover:text-white transition-colors" onClick={() => setShowHistoryModal(true)}>
               <i className="ph ph-clock-counter-clockwise"></i> History
+              {analysisHistory.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-neutral-800 text-[10px] text-neutral-300 font-mono font-bold leading-none">
+                  {analysisHistory.length}
+                </span>
+              )}
             </span>
           </div>
 
@@ -1464,6 +1512,135 @@ export default function App() {
           Alerts
         </div>
       </nav>
+
+      {/* --- ANALYSIS HISTORY MODAL OVERLAY --- */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[999] flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-fadeIn">
+          {/* Close on modal backdrop click */}
+          <div className="absolute inset-0 cursor-default" onClick={() => setShowHistoryModal(false)} />
+          
+          <div className="relative bg-neutral-950 border-t sm:border border-neutral-850 rounded-t-2xl sm:rounded-2xl w-full max-w-md mx-auto flex flex-col max-h-[85vh] sm:max-h-[80vh] shadow-2xl z-10 overflow-hidden">
+            {/* Header */}
+            <div className="flex justify-between items-center px-5 py-4 border-b border-neutral-900 bg-neutral-900/50">
+              <div className="flex items-center gap-2">
+                <i className="ph ph-clock-counter-clockwise text-amber-500 text-lg"></i>
+                <div className="text-left">
+                  <h3 className="text-sm font-bold text-neutral-100 m-0">Analysis History</h3>
+                  <p className="text-[10px] text-neutral-500 font-mono m-0">Restoring past scanner setups</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowHistoryModal(false)}
+                className="hover:text-white text-neutral-450 p-1 rounded-lg transition-colors cursor-pointer bg-transparent border-none"
+              >
+                <i className="ph ph-x text-lg"></i>
+              </button>
+            </div>
+
+            {/* History Items List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {analysisHistory.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+                  <div className="h-12 w-12 rounded-full bg-neutral-900 flex items-center justify-center text-neutral-600">
+                    <i className="ph ph-folder text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="text-xs text-neutral-400 font-medium m-0">No past analysis found</p>
+                    <p className="text-[10px] text-neutral-600 mt-1 m-0">Upload and analyze a chart to save details</p>
+                  </div>
+                </div>
+              ) : (
+                analysisHistory.map((item) => (
+                  <div 
+                    key={item.id} 
+                    className="group relative bg-[#121212] border border-neutral-900 hover:border-neutral-800 p-3 rounded-xl flex gap-3 transition-all cursor-pointer hover:bg-neutral-900/40 text-left"
+                    onClick={() => {
+                      setChartImage(item.image);
+                      setAnalysisReport(item.report);
+                      setAnalysisLogs([
+                        `Restored cached analysis from ${item.timestamp}`,
+                        'Strategy active during analysis: "' + (item.strategyUsed ? item.strategyUsed.substring(0, 35) + '...' : 'Default SMC') + '"',
+                        'Trigger levels & parameters fully reloaded.'
+                      ]);
+                      setShowHistoryModal(false);
+                    }}
+                  >
+                    <div className="w-16 h-16 rounded-lg bg-neutral-950 overflow-hidden flex-shrink-0 border border-neutral-800 flex items-center justify-center relative">
+                      <img 
+                        src={item.image} 
+                        alt="Restored Chart Thumbnail" 
+                        className="object-cover w-full h-full"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                    
+                    <div className="flex-1 min-w-0 pr-6">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded font-mono ${
+                          item.report.signal === 'BUY' ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/20' :
+                          item.report.signal === 'SELL' ? 'bg-rose-950/80 text-rose-400 border border-rose-500/20' :
+                          'bg-neutral-800 text-neutral-300'
+                        }`}>
+                          {item.report.signal}
+                        </span>
+                        <span className="text-[10px] text-neutral-500 font-mono">Conf: {item.report.confidence}</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-neutral-500 mb-1">
+                        <div>LVL: <span className="text-neutral-300 font-bold">{item.report.level}</span></div>
+                        <div>TP: <span className="text-emerald-500 font-bold">{item.report.tp}</span></div>
+                        <div>SL: <span className="text-rose-500 font-bold">{item.report.sl}</span></div>
+                      </div>
+
+                      <div className="text-[10px] text-neutral-500 line-clamp-1 italic font-sans w-11/12">
+                        {item.report.reason}
+                      </div>
+                    </div>
+
+                    {/* Individual Item Deletion */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAnalysisHistory(prev => {
+                          const filtered = prev.filter(p => p.id !== item.id);
+                          localStorage.setItem('gaks_chart_analysis_history', JSON.stringify(filtered));
+                          return filtered;
+                        });
+                      }}
+                      className="absolute right-3 top-3 h-6 w-6 rounded flex items-center justify-center bg-[#151515] text-neutral-500 hover:text-rose-400 hover:bg-rose-950/30 border border-neutral-900 transition-all cursor-pointer"
+                      title="Delete item"
+                    >
+                      <i className="ph ph-trash text-xs"></i>
+                    </button>
+
+                    <div className="absolute right-3 bottom-2 text-[9px] text-neutral-600 font-mono">
+                      {item.timestamp}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            {analysisHistory.length > 0 && (
+              <div className="p-4 border-t border-neutral-900 bg-[#0e0e0e]">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm("Are you sure you want to delete all past analysis history records?")) {
+                      setAnalysisHistory([]);
+                      localStorage.removeItem('gaks_chart_analysis_history');
+                    }
+                  }}
+                  className="w-full py-2 rounded-lg bg-rose-950/30 hover:bg-rose-950/80 text-rose-500 hover:text-white border border-rose-900/40 text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Clear All History
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
