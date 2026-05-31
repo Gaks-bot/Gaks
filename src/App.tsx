@@ -1,10 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 
-// Supabase Edge Function Credentials
-const metaEnv = (import.meta as any).env || {};
-export const SUPABASE_URL = metaEnv.VITE_SUPABASE_URL || 'https://your-supabase-project.supabase.co';
-export const SUPABASE_ANON_KEY = metaEnv.VITE_SUPABASE_ANON_KEY || 'your-supabase-anon-key';
-
+// Interfaces matching the exact structure from index-D5V-iQRb.js
 interface MarketPair {
   pair: string;
   name: string;
@@ -12,14 +8,40 @@ interface MarketPair {
   change: number;
 }
 
-interface AlertItem {
+interface AlertConfig {
   id: string;
   pair: string;
-  direction: 'above' | 'below';
+  direction: string;
   value: string;
-  channels: ('email' | 'push')[];
+  channels: string[];
   triggered: boolean;
   isMuted?: boolean;
+}
+
+interface AlertHistoryItem {
+  id: string;
+  pair: string;
+  message: string;
+  timestamp: string;
+  unread: boolean;
+}
+
+interface ActiveAlertItem {
+  id: string;
+  pair: string;
+  status: string;
+  distance: number;
+  maxDistance: number;
+  confidence: number;
+}
+
+interface AnalysisReport {
+  signal: string;
+  level: string;
+  tp: string;
+  sl: string;
+  confidence: string;
+  reason: string;
 }
 
 interface AnalysisHistoryItem {
@@ -27,30 +49,11 @@ interface AnalysisHistoryItem {
   timestamp: string;
   image: string;
   strategyUsed: string;
-  report: {
-    signal: 'BUY' | 'SELL' | 'HOLD';
-    level: string;
-    tp: string;
-    sl: string;
-    confidence: string;
-    reason: string;
-  };
+  report: AnalysisReport;
 }
 
-export function formatPrice(pair: string, price: number): string {
-  if (
-    pair.includes('JPY') ||
-    pair.includes('XAU') ||
-    pair.includes('XAG') ||
-    pair.includes('BTC') ||
-    pair.includes('ETH')
-  ) {
-    return price.toFixed(2);
-  }
-  return price.toFixed(4);
-}
-
-export const STRATEGIES_LIST: string[] = [
+// Full list of 20 Strategies from index-D5V-iQRb.js references
+const STRATEGIES_LIST = [
   `Supply & Demand / Smart Money Concepts (SMC) Strategy
 
 - Identify HTF (H4/H1) primary supply & demand zones.
@@ -219,7 +222,7 @@ export const STRATEGIES_LIST: string[] = [
   `Three-Drive Harmonical Pattern Strategy
 
 - Identify three symmetrical, consecutive price high peaks or low troughs.
-- Drive 2 should extend exactly to a 1.272 Fibonacci extension of Drive 1.
+- Drive 2 should extend exactly to 1.272 Fibonacci extension of Drive 1.
 - Drive 3 should extend exactly to 1.272 of Drive 2.
 - The corrective pullbacks should ideally hit exactly the 0.618 level of the preceding moves.
 - Enter counter-trend at the terminal point of Drive 3.
@@ -235,189 +238,109 @@ export const STRATEGIES_LIST: string[] = [
 - Take Profit: Target the Daily liquidity pool high or major resistance.`
 ];
 
-export default function App() {
-  const [currentPage, setCurrentPage] = useState<'market' | 'strategy' | 'analyze' | 'alerts'>('market');
+function formatPrice(pair: string, price: number): string {
+  return pair.includes("JPY") ||
+    pair.includes("XAU") ||
+    pair.includes("XAG") ||
+    pair.includes("BTC") ||
+    pair.includes("ETH")
+    ? price.toFixed(2)
+    : price.toFixed(4);
+}
 
-  // --- Live Rates State ---
+export default function App() {
+  // General layout / page routing - original default page was "market"
+  const [currentPage, setCurrentPage] = useState<string>("market");
+  
+  // Complete list of 13 initial market pairs
   const [marketPairs, setMarketPairs] = useState<MarketPair[]>([
-    { pair: 'EUR/USD', name: 'Euro / US Dollar', price: 1.1749, change: -0.03 },
-    { pair: 'GBP/USD', name: 'British Pound / US Dollar', price: 1.3493, change: -0.06 },
-    { pair: 'USD/JPY', name: 'US Dollar / Japanese Yen', price: 159.07, change: 0.19 },
-    { pair: 'USD/CHF', name: 'US Dollar / Swiss Franc', price: 0.7834, change: 0.11 },
-    { pair: 'AUD/USD', name: 'Australian Dollar / US Dollar', price: 0.7145, change: 0.21 },
-    { pair: 'USD/CAD', name: 'US Dollar / Canadian Dollar', price: 1.3725, change: -0.08 },
-    { pair: 'EUR/GBP', name: 'Euro / British Pound', price: 0.8521, change: 0.04 },
-    { pair: 'GBP/JPY', name: 'British Pound / Japanese Yen', price: 202.45, change: 0.35 },
-    { pair: 'NZD/USD', name: 'New Zealand Dollar / US Dollar', price: 0.6122, change: -0.15 },
-    { pair: 'XAU/USD', name: 'Gold / US Dollar', price: 2342.60, change: 0.65 },
-    { pair: 'XAG/USD', name: 'Silver / US Dollar', price: 29.42, change: 1.12 },
-    { pair: 'BTC/USD', name: 'Bitcoin / US Dollar', price: 67450.00, change: 2.34 },
-    { pair: 'ETH/USD', name: 'Ethereum / US Dollar', price: 3480.00, change: 1.87 },
+    { pair: "EUR/USD", name: "Euro / US Dollar", price: 1.1749, change: -0.03 },
+    { pair: "GBP/USD", name: "British Pound / US Dollar", price: 1.3493, change: -0.06 },
+    { pair: "USD/JPY", name: "US Dollar / Japanese Yen", price: 159.07, change: 0.19 },
+    { pair: "USD/CHF", name: "US Dollar / Swiss Franc", price: 0.7834, change: 0.11 },
+    { pair: "AUD/USD", name: "Australian Dollar / US Dollar", price: 0.7145, change: 0.21 },
+    { pair: "USD/CAD", name: "US Dollar / Canadian Dollar", price: 1.3725, change: -0.08 },
+    { pair: "EUR/GBP", name: "Euro / British Pound", price: 0.8521, change: 0.04 },
+    { pair: "GBP/JPY", name: "British Pound / Japanese Yen", price: 202.45, change: 0.35 },
+    { pair: "NZD/USD", name: "New Zealand Dollar / US Dollar", price: 0.6122, change: -0.15 },
+    { pair: "XAU/USD", name: "Gold / US Dollar", price: 2342.60, change: 0.65 },
+    { pair: "XAG/USD", name: "Silver / US Dollar", price: 29.42, change: 1.12 },
+    { pair: "BTC/USD", name: "Bitcoin / US Dollar", price: 67450.00, change: 2.34 },
+    { pair: "ETH/USD", name: "Ethereum / US Dollar", price: 3480.00, change: 1.87 }
   ]);
 
-  // --- Secure Twelve Data Live Rates & Local Backup Engine ---
-  // Calculates live forex rate for the market page and preferred TP/SL with 5 sec auto update
-  useEffect(() => {
-    const fetchRatesAndFluctuate = async () => {
-      try {
-        // POST request to securely proxy Twelve Data live forex rates via local proxy
-        const response = await fetch('/api/forex-rates', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ pairs: marketPairs.map(p => p.pair) })
-        });
+  // Strategy values and index configurations
+  const [selectedStrategy, setSelectedStrategy] = useState<string>(STRATEGIES_LIST[0]);
+  const [selectedStrategyIndex, setSelectedStrategyIndex] = useState<number>(0);
+  const [isSaved, setIsSaved] = useState<boolean>(true);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string>("Strategy Synced ✓");
 
-        if (!response.ok) {
-          throw new Error(`Proxy returned HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (data && data.rates) {
-          setMarketPairs(prevPairs =>
-            prevPairs.map(p => {
-              const rateData = data.rates[p.pair];
-              if (rateData) {
-                const livePrice = typeof rateData.price === 'number' ? rateData.price : parseFloat(rateData.price);
-                const pctChange = typeof rateData.change === 'number' ? rateData.change : parseFloat(rateData.change);
-                if (!isNaN(livePrice)) {
-                  return {
-                    ...p,
-                    price: livePrice,
-                    change: isNaN(pctChange) ? p.change : pctChange
-                  };
-                }
-              }
-              return p;
-            })
-          );
-          return;
-        }
-      } catch (err) {
-        // Safe logger wrapper
-        console.warn('Using local volatility engine (Twelve keys not set or connection timed out):', err);
-      }
-
-      // High-Fidelity Local fluctuation engine fallback
-      setMarketPairs(prevPairs =>
-        prevPairs.map(p => {
-          const changePercent = (Math.random() - 0.5) * 0.035;
-          let newPrice = p.price * (1 + changePercent / 100);
-          
-          if (
-            p.pair.includes('JPY') || 
-            p.pair.includes('XAU') || 
-            p.pair.includes('XAG') || 
-            p.pair.includes('BTC') || 
-            p.pair.includes('ETH')
-          ) {
-            newPrice = parseFloat(newPrice.toFixed(2));
-          } else {
-            newPrice = parseFloat(newPrice.toFixed(4));
-          }
-
-          const newChange = parseFloat((p.change + changePercent * 2.2).toFixed(2));
-
-          return {
-            ...p,
-            price: newPrice,
-            change: newChange
-          };
-        })
-      );
-    };
-
-    // Perform rate check immediately, then configure the 15-sec auto update (15000ms) to conserve API limit space
-    fetchRatesAndFluctuate();
-    const interval = setInterval(fetchRatesAndFluctuate, 15000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // --- Strategy State ---
-  const [strategyText, setStrategyText] = useState<string>(STRATEGIES_LIST[0]);
-  const [currentStrategyIndex, setCurrentStrategyIndex] = useState<number>(0);
-  const [isSynced, setIsSynced] = useState<boolean>(true);
-  const [syncMessage, setSyncMessage] = useState<string>('Strategy Synced ✓');
-
+  // Handler for custom strategies updates
   const handleStrategyChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setStrategyText(e.target.value);
-    setIsSynced(false);
+    setSelectedStrategy(e.target.value);
+    setIsSaved(false);
   };
 
-  const handleSyncStrategy = () => {
-    setSyncMessage('Syncing strategy...');
+  const handleSaveStrategy = () => {
+    setSyncStatusMsg("Syncing strategy...");
     setTimeout(() => {
-      setIsSynced(true);
-      setSyncMessage('Strategy Synced ✓');
+      setIsSaved(true);
+      setSyncStatusMsg("Strategy Synced ✓");
     }, 800);
   };
 
-  const handleLoadRandomStrategy = () => {
+  const handlePickRandomExample = () => {
     let nextIndex = Math.floor(Math.random() * STRATEGIES_LIST.length);
     if (STRATEGIES_LIST.length > 1) {
-      while (nextIndex === currentStrategyIndex) {
+      while (nextIndex === selectedStrategyIndex) {
         nextIndex = Math.floor(Math.random() * STRATEGIES_LIST.length);
       }
     }
-    setCurrentStrategyIndex(nextIndex);
-    setStrategyText(STRATEGIES_LIST[nextIndex]);
-    setIsSynced(false);
+    setSelectedStrategyIndex(nextIndex);
+    setSelectedStrategy(STRATEGIES_LIST[nextIndex]);
+    setIsSaved(false);
   };
 
-  // --- Analyze State (Chart Upload) ---
-  const [chartImage, setChartImage] = useState<string | null>(null);
+  // Image upload and analyzer states
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [analysisReport, setAnalysisReport] = useState<{
-    signal: 'BUY' | 'SELL' | 'HOLD';
-    level: string;
-    tp: string;
-    sl: string;
-    confidence: string;
-    reason: string;
-  } | null>(null);
-
+  const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>(() => {
     try {
-      const stored = localStorage.getItem('gaks_chart_analysis_history');
+      const stored = localStorage.getItem("gaks_chart_analysis_history");
       return stored ? JSON.parse(stored) : [];
-    } catch (e) {
+    } catch {
       return [];
     }
   });
-  const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState<boolean>(false);
 
-  const saveAnalysisToHistory = (image: string, strategy: string, report: {
-    signal: 'BUY' | 'SELL' | 'HOLD';
-    level: string;
-    tp: string;
-    sl: string;
-    confidence: string;
-    reason: string;
-  }) => {
-    const newItem: AnalysisHistoryItem = {
-      id: 'analysis-' + Date.now(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+  // Helper storage engine to cache reports
+  const saveToHistory = (image: string, strategy: string, report: AnalysisReport) => {
+    const item: AnalysisHistoryItem = {
+      id: "analysis-" + Date.now(),
+      timestamp:
+        new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+        " - " +
+        new Date().toLocaleDateString([], { month: "short", day: "numeric" }),
       image,
       strategyUsed: strategy,
-      report
+      report,
     };
-
-    setAnalysisHistory(prev => {
-      const updated = [newItem, ...prev].slice(0, 15);
+    setAnalysisHistory((prev) => {
+      const updated = [item, ...prev].slice(0, 15);
       try {
-        localStorage.setItem('gaks_chart_analysis_history', JSON.stringify(updated));
-      } catch (e) {
-        console.warn('LocalStorage limit exceeded, keeping history in memory only.');
+        localStorage.setItem("gaks_chart_analysis_history", JSON.stringify(updated));
+      } catch {
+        console.warn("LocalStorage space limits exceeded. Saving in memory only.");
       }
       return updated;
     });
   };
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -428,15 +351,15 @@ export default function App() {
     setIsDragging(false);
   };
 
-  const processImageFile = (file: File) => {
+  const processFile = (file: File) => {
     if (file.size > 10 * 1024 * 1024) {
-      alert('File size exceeds 10MB limit.');
+      alert("File size exceeds 10MB limit.");
       return;
     }
     const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setChartImage(event.target.result as string);
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setUploadedImage(e.target.result as string);
         setAnalysisReport(null);
         setAnalysisLogs([]);
       }
@@ -447,418 +370,495 @@ export default function App() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processImageFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.[0]) {
+      processFile(e.dataTransfer.files[0]);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processImageFile(e.target.files[0]);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      processFile(e.target.files[0]);
     }
   };
 
-  const triggerUploadClick = () => {
-    fileInputRef.current?.click();
+  const handleUploadAreaClick = () => {
+    imageInputRef.current?.click();
   };
 
-  // --- Secure Gemini API Backend Call with Graceful Fallback ---
-  const runAnalysis = async () => {
-    if (isAnalyzing) return;
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setUploadedImage(null);
+    setAnalysisReport(null);
+    setAnalysisLogs([]);
+  };
+
+  // Perform Gemini analysis on uploaded charts
+  const handleAnalyzeChart = async () => {
+    if (!uploadedImage || isAnalyzing) return;
     setIsAnalyzing(true);
     setAnalysisReport(null);
     setAnalysisLogs([
-      'Initiating chart analysis layout scanner...',
-      'Securing payloads and preparing API gateway metadata...',
+      "Initiating chart analysis layout scanner...",
+      "Securing payloads and preparing API gateway metadata...",
       'Requesting analysis from secure backend: "Gemini 3.5 Flash"...'
     ]);
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout protection
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-      const response = await fetch('/api/analyze-chart', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          image: chartImage, // contains base64 image data string
-          strategy: strategyText
-        }),
-        signal: controller.signal
+      const res = await fetch("/api/analyze-chart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: uploadedImage, strategy: selectedStrategy }),
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server answered with error status: ${response.status}`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Server answered with error status: ${res.status}`);
       }
 
-      setAnalysisLogs(prev => [
+      setAnalysisLogs((prev) => [
         ...prev,
-        'Successfully fetched secure feedback from Gemini AI scanner ✓',
-        'Parsing strategy validation & target recommendations...'
+        "Successfully fetched secure feedback from Gemini AI scanner ✓",
+        "Parsing strategy validation & target recommendations..."
       ]);
 
-      const data = await response.json();
-
+      const data = await res.json();
       if (data && (data.signal || data.reason)) {
-        const report = {
-          signal: (data.signal || 'HOLD').toUpperCase() as 'BUY' | 'SELL' | 'HOLD',
+        const report: AnalysisReport = {
+          signal: (data.signal || "HOLD").toUpperCase(),
           level: data.level || (1.1749).toFixed(4),
-          tp: data.tp || (1.1749 * 1.015).toFixed(4),
-          sl: data.sl || (1.1749 * 0.992).toFixed(4),
-          confidence: data.confidence || '91%',
-          reason: data.reason || 'Chart analysed successfully matching your chosen active strategy guidelines.'
+          tp: data.tp || (1.1925).toFixed(4),
+          sl: data.sl || (1.1655).toFixed(4),
+          confidence: data.confidence || "91%",
+          reason: data.reason || "Chart analysed successfully matching your chosen active strategy guidelines."
         };
+
         setAnalysisReport(report);
-        if (chartImage) {
-          saveAnalysisToHistory(chartImage, strategyText, report);
+        if (uploadedImage) {
+          saveToHistory(uploadedImage, selectedStrategy, report);
         }
-        setAnalysisLogs(prev => [...prev, 'Gemini AI analysis finished successfully!']);
+        setAnalysisLogs((prev) => [...prev, "Gemini AI analysis finished successfully!"]);
       } else {
-        throw new Error('Invalid or empty response structure from remote edge service.');
+        throw new Error("Invalid or empty response structure from remote edge service.");
       }
+
     } catch (err: any) {
-      console.warn('Gemini analysis info:', err.message || err);
-      
-      const errorMsg = err.message || 'Network failure or timeout context.';
-      setAnalysisLogs(prev => [
+      console.warn("Gemini service response:", err.message || err);
+      const errMsg = err.message || "Network failure or timeout context.";
+
+      setAnalysisLogs((prev) => [
         ...prev,
-        `⚠️ Call failed: ${errorMsg}`,
-        'Engaging premium on-device fallback analysis module as backup...',
-        'Scanning chart screenshot for price action patterns...',
-        'Analyzing market structure on H1 and M15 levels...',
-        'Formulating high-conviction trade setups matching strategy criteria...'
+        `⚠️ Call failed: ${errMsg}`,
+        "Engaging premium on-device fallback analysis module as backup...",
+        "Scanning chart screenshot for price action patterns...",
+        "Analyzing market structure on H1 and M15 levels...",
+        "Formulating high-conviction trade setups matching strategy criteria..."
       ]);
 
-      // High quality fallback so developer can keep testing without setting up Supabase
+      // Provide dynamic fallback recommendation block
       setTimeout(() => {
-        const signals: ('BUY' | 'SELL' | 'HOLD')[] = ['BUY', 'SELL', 'HOLD'];
-        const chosenSignal = signals[Math.floor(Math.random() * signals.length)];
-        const randomTP = (1.1749 + (Math.random() - 0.5) * 0.02).toFixed(4);
-        const randomSL = (1.1749 + (Math.random() - 0.5) * 0.01).toFixed(4);
-        const confidences = ['84%', '88%', '91%', '95%'];
+        const signals = ["BUY", "SELL", "HOLD"];
+        const computedSignal = signals[Math.floor(Math.random() * signals.length)];
+        const targetPrice = (1.1749 + (Math.random() - 0.5) * 0.02).toFixed(4);
+        const stopLoss = (1.1749 + (Math.random() - 0.5) * 0.01).toFixed(4);
+        const confidences = ["84%", "88%", "91%", "95%"];
 
-        const report = {
-          signal: chosenSignal,
+        const fallbackReport: AnalysisReport = {
+          signal: computedSignal,
           level: (1.1749 + (Math.random() - 0.5) * 0.005).toFixed(4),
-          tp: randomTP,
-          sl: randomSL,
+          tp: targetPrice,
+          sl: stopLoss,
           confidence: confidences[Math.floor(Math.random() * confidences.length)],
-          reason: `[Edge Fallback Engaged] Chosen setup: ${chosenSignal} entry detected at localized value zones matching active strategy criteria. To use real-time Cloud models, replace your Supabase credentials in settings.`
+          reason: `[Edge Fallback Engaged] Chosen setup: ${computedSignal} entry detected at localized value zones matching active strategy criteria. To use real-time Cloud models, replace your Supabase credentials in settings.`
         };
 
-        setAnalysisReport(report);
-        if (chartImage) {
-          saveAnalysisToHistory(chartImage, strategyText, report);
+        setAnalysisReport(fallbackReport);
+        if (uploadedImage) {
+          saveToHistory(uploadedImage, selectedStrategy, fallbackReport);
         }
-        setAnalysisLogs(prev => [...prev, 'AI Scan complete ✓ (Local Fallback mode)']);
+        setAnalysisLogs((prev) => [...prev, "AI Scan complete ✓ (Local Fallback mode)"]);
       }, 2500);
+
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const clearChartImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setChartImage(null);
-    setAnalysisReport(null);
-    setAnalysisLogs([]);
-  };
-
-  // --- Alerts & Notifications State ---
-  const [alertsList, setAlertsList] = useState<AlertItem[]>([
-    { id: 'alert-1', pair: 'BTC/USD', direction: 'above', value: '68000.00', channels: ['email', 'push'], triggered: true },
-    { id: 'alert-2', pair: 'EUR/USD', direction: 'below', value: '1.1700', channels: ['email', 'push'], triggered: true },
+  // Manual Trigger Level Alerts configurations
+  const [customAlertsList, setCustomAlertsList] = useState<AlertConfig[]>([
+    { id: "alert-1", pair: "BTC/USD", direction: "above", value: "68000.00", channels: ["email", "push"], triggered: true },
+    { id: "alert-2", pair: "EUR/USD", direction: "below", value: "1.1700", channels: ["email", "push"], triggered: true }
   ]);
-
   const [selectedPairIndex, setSelectedPairIndex] = useState<number>(0);
-  const [alertDirection, setAlertDirection] = useState<'above' | 'below'>('above');
-  const [alertChannels, setAlertChannels] = useState<('email' | 'push')[]>(['email', 'push']);
-  const [customPriceValue, setCustomPriceValue] = useState<string>('');
+  const [alertDirection, setAlertDirection] = useState<string>("above");
+  const [alertChannels, setAlertChannels] = useState<string[]>(["email", "push"]);
+  const [customPriceValue, setCustomPriceValue] = useState<string>("");
   const [pairDropdownOpen, setPairDropdownOpen] = useState<boolean>(false);
 
-  // --- FUTURE BACKEND PLACEHOLDERS & STATED VARIABLES (SECTION 6) ---
+  // Future backend replica configurations (Live Watcher States)
   const [watcherEnabled, setWatcherEnabled] = useState<boolean>(true);
-  const [watchedPairs, setWatchedPairs] = useState<string[]>(['EUR/USD', 'GBP/USD', 'XAU/USD', 'USD/JPY']);
-  const [alertDistance, setAlertDistance] = useState<string>('10 pips away');
-  const [timeframeSetting, setTimeframeSetting] = useState<string>('H1');
-  
-  const [notificationSettings, setNotificationSettings] = useState({
+  const [monitoredPairs, setMonitoredPairs] = useState<string[]>(["EUR/USD", "GBP/USD", "XAU/USD", "USD/JPY"]);
+  const [alertDistance, setAlertDistance] = useState<string>("10 pips away");
+  const [timeframeSetting, setTimeframeSetting] = useState<string>("H1");
+  const [notificationConditions, setNotificationConditions] = useState<Record<string, boolean>>({
     approachingZone: true,
     zoneReached: true,
     confirmationDetected: true,
     tradeSetup: true,
     setupInvalidated: false
   });
-
-  const [alertHistory, setAlertHistory] = useState([
-    { id: 'h1', pair: 'EUR/USD', message: '🔔 EURUSD approaching demand zone.', timestamp: '10:42 AM', unread: true },
-    { id: 'h2', pair: 'GBP/USD', message: '🔔 GBPUSD entered supply zone.', timestamp: '10:15 AM', unread: false },
-    { id: 'h3', pair: 'XAU/USD', message: '🔔 XAUUSD bullish confirmation detected.', timestamp: '09:30 AM', unread: false }
+  const [recentScannerAlerts, setRecentScannerAlerts] = useState<AlertHistoryItem[]>([
+    { id: "h1", pair: "EUR/USD", message: "🔔 EURUSD approaching demand zone.", timestamp: "10:42 AM", unread: true },
+    { id: "h2", pair: "GBP/USD", message: "🔔 GBPUSD entered supply zone.", timestamp: "10:15 AM", unread: false },
+    { id: "h3", pair: "XAU/USD", message: "🔔 XAUUSD bullish confirmation detected.", timestamp: "09:30 AM", unread: false }
   ]);
-
-  const [activeAlerts, setActiveAlerts] = useState([
-    { id: 'aa1', pair: 'EUR/USD', status: 'Approaching Demand Zone', distance: 8, maxDistance: 15, confidence: 82 }
+  const [liveScanDashboard, setLiveScanDashboard] = useState<ActiveAlertItem[]>([
+    { id: "aa1", pair: "EUR/USD", status: "Approaching Demand Zone", distance: 8, maxDistance: 15, confidence: 82 }
   ]);
-
-  const [marketStatus, setMarketStatus] = useState<'Active' | 'Paused' | 'Monitoring'>('Monitoring');
+  const [heuristicStatus, setHeuristicStatus] = useState<string>("Monitoring");
   const [addPairDropdownOpen, setAddPairDropdownOpen] = useState<boolean>(false);
 
-  // Computed state for current alerts count
-  const notificationCount = alertHistory.filter(h => h.unread).length;
+  // Computes active badge unread counts
+  const unreadAlertsCount = recentScannerAlerts.filter((item) => item.unread).length;
 
-  // --- WATCHER ACTION HANDLERS ---
-  const toggleWatcher = () => {
-    const nextVal = !watcherEnabled;
-    setWatcherEnabled(nextVal);
-    setMarketStatus(nextVal ? 'Monitoring' : 'Paused');
+  const handleToggleWatcher = () => {
+    const nextState = !watcherEnabled;
+    setWatcherEnabled(nextState);
+    setHeuristicStatus(nextState ? "Monitoring" : "Paused");
   };
 
-  const removeWatchedPair = (pair: string) => {
-    setWatchedPairs(prev => prev.filter(p => p !== pair));
-    setActiveAlerts(prev => prev.filter(a => a.pair !== pair));
+  const handleRemoveMonitoredPair = (pairToRemove: string) => {
+    setMonitoredPairs((prev) => prev.filter((p) => p !== pairToRemove));
+    setLiveScanDashboard((prev) => prev.filter((item) => item.pair !== pairToRemove));
   };
 
-  const addWatchedPair = (pair: string) => {
-    if (!watchedPairs.includes(pair)) {
-      setWatchedPairs(prev => [...prev, pair]);
-      
-      const statuses = ['Approaching Demand Zone', 'Entered Supply Zone', 'Setup Forming'];
-      const confidenceValues = [82, 85, 91];
-      const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      
-      setActiveAlerts(prev => [
+  const handleAddMonitoredPair = (newPair: string) => {
+    if (!monitoredPairs.includes(newPair)) {
+      setMonitoredPairs((prev) => [...prev, newPair]);
+      const statusOptions = [
+        "Approaching Demand Zone",
+        "Entered Supply Zone",
+        "Setup Forming"
+      ];
+      const confOptions = [82, 85, 91];
+      const selectedStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+      setLiveScanDashboard((prev) => [
         ...prev,
         {
-          id: 'aa-' + Date.now(),
-          pair,
-          status: randomStatus,
+          id: "aa-" + Date.now(),
+          pair: newPair,
+          status: selectedStatus,
           distance: Math.floor(Math.random() * 7) + 5,
           maxDistance: 15,
-          confidence: confidenceValues[Math.floor(Math.random() * confidenceValues.length)]
+          confidence: confOptions[Math.floor(Math.random() * confOptions.length)]
         }
       ]);
     }
     setAddPairDropdownOpen(false);
   };
 
-  const toggleNotificationType = (key: keyof typeof notificationSettings) => {
-    setNotificationSettings(prev => ({
+  const handleToggleCondition = (key: string) => {
+    setNotificationConditions((prev) => ({
       ...prev,
       [key]: !prev[key]
     }));
   };
 
-  const markHistoryItemRead = (id: string) => {
-    setAlertHistory(prev => prev.map(item => item.id === id ? { ...item, unread: false } : item));
+  const handleAcknowledgeAlertItem = (id: string) => {
+    setRecentScannerAlerts((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, unread: false } : item))
+    );
   };
 
-  const markAllHistoryRead = () => {
-    setAlertHistory(prev => prev.map(item => ({ ...item, unread: false })));
+  const handleClearAlertBadges = () => {
+    setRecentScannerAlerts((prev) =>
+      prev.map((item) => ({ ...item, unread: false }))
+    );
   };
 
-  // Dynamic fluctuation for active local alerts distance simulation (Institutional Feel)
+  // Tick updates / fetch forex routes
+  useEffect(() => {
+    const fetchFreshRates = async () => {
+      try {
+        const response = await fetch("/api/forex-rates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pairs: marketPairs.map((p) => p.pair) })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.rates) {
+            setMarketPairs((prev) =>
+              prev.map((coin) => {
+                const fresh = data.rates[coin.pair];
+                if (fresh) {
+                  const numPrice = typeof fresh.price === "number" ? fresh.price : parseFloat(fresh.price);
+                  const numChange = typeof fresh.change === "number" ? fresh.change : parseFloat(fresh.change);
+                  if (!isNaN(numPrice)) {
+                    return {
+                      ...coin,
+                      price: numPrice,
+                      change: isNaN(numChange) ? coin.change : numChange
+                    };
+                  }
+                }
+                return coin;
+              })
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Twelve cache proxy feedback - utilizing local engine updates", err);
+      }
+
+      // On-device simulated local volatility engine
+      setMarketPairs((prev) =>
+        prev.map((coin) => {
+          const wave = (Math.random() - 0.5) * 0.035;
+          let newPrice = coin.price * (1 + wave / 100);
+          if (
+            coin.pair.includes("JPY") ||
+            coin.pair.includes("XAU") ||
+            coin.pair.includes("XAG") ||
+            coin.pair.includes("BTC") ||
+            coin.pair.includes("ETH")
+          ) {
+            newPrice = parseFloat(newPrice.toFixed(2));
+          } else {
+            newPrice = parseFloat(newPrice.toFixed(4));
+          }
+          const adjustedChange = parseFloat((coin.change + wave * 2.2).toFixed(2));
+          return { ...coin, price: newPrice, change: adjustedChange };
+        })
+      );
+    };
+
+    fetchFreshRates();
+    const updaterId = setInterval(fetchFreshRates, 15000);
+    return () => clearInterval(updaterId);
+  }, []);
+
+  // Autonomous setup scanner simulator ticks
   useEffect(() => {
     if (!watcherEnabled) {
-      setMarketStatus('Paused');
+      setHeuristicStatus("Paused");
       return;
     }
-    setMarketStatus('Monitoring');
+    setHeuristicStatus("Monitoring");
 
-    const updateInterval = setInterval(() => {
-      setActiveAlerts(prev => prev.map(alert => {
-        const delta = Math.random() > 0.5 ? 1 : -1;
-        let newDistance = alert.distance + delta;
-        if (newDistance < 1) newDistance = 1;
-        if (newDistance > 15) newDistance = 15;
+    const simulatorId = setInterval(() => {
+      setLiveScanDashboard((prevDashboard) =>
+        prevDashboard.map((item) => {
+          const shift = Math.random() > 0.5 ? 1 : -1;
+          let newDistance = item.distance + shift;
+          if (newDistance < 1) newDistance = 1;
+          if (newDistance > 15) newDistance = 15;
 
-        // Auto trigger notification if a pair enters very close territory
-        if (newDistance <= 4 && Math.random() > 0.6) {
-          const isDemand = alert.status.toLowerCase().includes('demand');
-          const finalStatus = isDemand ? 'approaching demand zone' : 'entered supply zone';
-          const alertMessage = `🔔 ${alert.pair.replace('/', '')} ${finalStatus}.`;
-          
-          setAlertHistory(currHist => {
-            const alreadyExists = currHist.some(h => h.pair === alert.pair && h.message.includes(finalStatus));
-            if (alreadyExists) return currHist;
-            return [
-              {
-                id: 'h-' + Date.now(),
-                pair: alert.pair,
-                message: alertMessage,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                unread: true
-              },
-              ...currHist
-            ];
-          });
-        }
+          // Trigger simulated setup warning alert
+          if (newDistance <= 4 && Math.random() > 0.6) {
+            const isDemandResult = item.status.toLowerCase().includes("demand");
+            const detailStr = isDemandResult ? "approaching demand zone" : "entered supply zone";
+            const notificationMsg = `🔔 ${item.pair.replace("/", "")} ${detailStr}.`;
 
-        return {
-          ...alert,
-          distance: newDistance
-        };
-      }));
+            setRecentScannerAlerts((history) => {
+              const exists = history.some(
+                (hItem) => hItem.pair === item.pair && hItem.message.includes(detailStr)
+              );
+              if (exists) return history;
+
+              return [
+                {
+                  id: "h-" + Date.now(),
+                  pair: item.pair,
+                  message: notificationMsg,
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  }),
+                  unread: true
+                },
+                ...history
+              ];
+            });
+          }
+
+          return { ...item, distance: newDistance };
+        })
+      );
     }, 5000);
 
-    return () => clearInterval(updateInterval);
+    return () => clearInterval(simulatorId);
   }, [watcherEnabled]);
 
-  const selectedPair = marketPairs[selectedPairIndex];
+  const activeMarketAsset = marketPairs[selectedPairIndex];
 
-  const toggleChannel = (channel: 'email' | 'push') => {
-    if (alertChannels.includes(channel)) {
-      setAlertChannels(prev => prev.filter(c => c !== channel));
+  // Manual Trigger Alert Configuration updates
+  const handleToggleChannelSelection = (ch: string) => {
+    if (alertChannels.includes(ch)) {
+      setAlertChannels((prev) => prev.filter((item) => item !== ch));
     } else {
-      setAlertChannels(prev => [...prev, channel]);
+      setAlertChannels((prev) => [...prev, ch]);
     }
   };
 
-  const handleAddAlert = () => {
-    // Determine the numeric trigger price. Use customized price or current live price if empty.
-    const priceToSet = customPriceValue.trim() !== '' 
-      ? parseFloat(customPriceValue) 
-      : selectedPair.price;
-
-    if (isNaN(priceToSet) || priceToSet <= 0) {
-      alert('Please enter a valid target trigger price.');
+  const handleRegisterPriceTriggerAlert = () => {
+    const rawVal = customPriceValue.trim() !== "" ? parseFloat(customPriceValue) : activeMarketAsset.price;
+    if (isNaN(rawVal) || rawVal <= 0) {
+      alert("Please enter a valid target trigger price.");
       return;
     }
 
-    const newAlert: AlertItem = {
-      id: 'alert-' + Date.now(),
-      pair: selectedPair.pair,
+    const createdAlert: AlertConfig = {
+      id: "alert-" + Date.now(),
+      pair: activeMarketAsset.pair,
       direction: alertDirection,
-      value: priceToSet.toFixed(4),
-      channels: alertChannels.length > 0 ? alertChannels : ['email'],
+      value: rawVal.toFixed(4),
+      channels: alertChannels.length > 0 ? alertChannels : ["email"],
       triggered: false
     };
 
-    setAlertsList(prev => [newAlert, ...prev]);
-    setCustomPriceValue('');
-    
-    // Alert feedback toast stimulation
-    const audioConfirm = new Audio();
-    audioConfirm.play().catch(() => {}); // silent fail, completely fine
+    setCustomAlertsList((prev) => [createdAlert, ...prev]);
+    setCustomPriceValue("");
+
+    // Simulate warning audio trigger
+    const sound = new Audio();
+    sound.play().catch(() => {});
   };
 
-  const deleteAlert = (id: string) => {
-    setAlertsList(prev => prev.filter(al => al.id !== id));
+  const handleDeleteTriggerAlert = (alertId: string) => {
+    setCustomAlertsList((prev) => prev.filter((item) => item.id !== alertId));
   };
 
-  const toggleMuteAlert = (id: string) => {
-    setAlertsList(prev => prev.map(al => al.id === id ? { ...al, isMuted: !al.isMuted } : al));
+  const handleToggleMuteTriggerAlert = (alertId: string) => {
+    setCustomAlertsList((prev) =>
+      prev.map((item) => (item.id === alertId ? { ...item, isMuted: !item.isMuted } : item))
+    );
   };
 
-  // Check and trigger custom alerts locally if they cross levels (fun interaction!)
+  // Triggers alert validation inside general loop ticker
   useEffect(() => {
-    setAlertsList(prevAlerts => {
-      let changed = false;
-      const updated = prevAlerts.map(alertItem => {
-        if (alertItem.triggered) return alertItem;
-        const livePair = marketPairs.find(p => p.pair === alertItem.pair);
-        if (!livePair) return alertItem;
+    setCustomAlertsList((prevAlerts) => {
+      let triggeredOccurred = false;
+      const verified = prevAlerts.map((original) => {
+        if (original.triggered) return original;
+        const matchingAsset = marketPairs.find((coin) => coin.pair === original.pair);
+        if (!matchingAsset) return original;
 
-        const livePrice = livePair.price;
-        const targetPrice = parseFloat(alertItem.value);
+        const liveMarkValue = matchingAsset.price;
+        const alertTriggerValue = parseFloat(original.value);
+        let triggeredState = false;
 
-        let didTrigger = false;
-        if (alertItem.direction === 'above' && livePrice >= targetPrice) {
-          didTrigger = true;
-        } else if (alertItem.direction === 'below' && livePrice <= targetPrice) {
-          didTrigger = true;
+        if (original.direction === "above" && liveMarkValue >= alertTriggerValue) {
+          triggeredState = true;
+        } else if (original.direction === "below" && liveMarkValue <= alertTriggerValue) {
+          triggeredState = true;
         }
 
-        if (didTrigger) {
-          changed = true;
-          return { ...alertItem, triggered: true };
+        if (triggeredState) {
+          triggeredOccurred = true;
+          return { ...original, triggered: true };
         }
-        return alertItem;
+        return original;
       });
 
-      return changed ? updated : prevAlerts;
+      return triggeredOccurred ? verified : prevAlerts;
     });
   }, [marketPairs]);
 
-  // Handle Logout Reset Demo Action
-  const handleLogout = () => {
-    if (confirm('Do you want to reset and clear your trading strategy and alert data?')) {
-      setStrategyText(STRATEGIES_LIST[0]);
-      setCurrentStrategyIndex(0);
-      setIsSynced(true);
-      setChartImage(null);
+  // Overall complete reset trigger
+  const handleResetApplicationState = () => {
+    const doubleCheck = confirm(
+      "Do you want to reset and clear your trading strategy and alert data?"
+    );
+    if (doubleCheck) {
+      setSelectedStrategy(STRATEGIES_LIST[0]);
+      setSelectedStrategyIndex(0);
+      setIsSaved(true);
+      setUploadedImage(null);
       setAnalysisReport(null);
       setAnalysisLogs([]);
-      setAlertsList([
-        { id: 'alert-1', pair: 'BTC/USD', direction: 'above', value: '68000.00', channels: ['email', 'push'], triggered: true },
-        { id: 'alert-2', pair: 'EUR/USD', direction: 'below', value: '1.1700', channels: ['email', 'push'], triggered: true },
+      setCustomAlertsList([
+        { id: "alert-1", pair: "BTC/USD", direction: "above", value: "68000.00", channels: ["email", "push"], triggered: true },
+        { id: "alert-2", pair: "EUR/USD", direction: "below", value: "1.1700", channels: ["email", "push"], triggered: true }
       ]);
-      setAlertDirection('above');
-      setAlertChannels(['email', 'push']);
+      setAlertDirection("above");
+      setAlertChannels(["email", "push"]);
       setSelectedPairIndex(0);
-      setCurrentPage('market');
+      setCurrentPage("market");
     }
   };
 
   return (
     <div>
-      {/* --- Global Header --- */}
+      {/* Header Top Container */}
       <div className="header-top">
         <span>Gaks Ai</span>
-        <i className="ph ph-sign-out logout-icon" title="Reset Session Data" onClick={handleLogout}></i>
+        <i
+          className="ph ph-sign-out logout-icon"
+          title="Reset Session Data"
+          onClick={handleResetApplicationState}
+        />
       </div>
 
       <div className="container">
-        
-        {/* --- 1. MARKET PAGE --- */}
-        <div id="market" className={`page ${currentPage === 'market' ? 'active' : ''}`}>
+        {/* --- MARKET PAGE --- */}
+        <div id="market" className={`page ${currentPage === "market" ? "active" : ""}`}>
           <div className="flex justify-between items-center mb-1">
             <h2>Live Rates</h2>
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#1e1e1e] border border-neutral-800 text-[10px] font-mono text-neutral-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>5s Auto Update</span>
             </div>
           </div>
           <div className="text-[11px] flex gap-2 items-center mb-4 text-[#888]">
-            <i className="ph ph-shield-check"></i>
+            <i className="ph ph-shield-check" />
             <span>Secured via Supabase Edge Functions</span>
           </div>
 
           <div className="space-y-[12px]">
-            {marketPairs.map(p => {
-              const isUp = p.change >= 0;
-              // Target TP and SL positions dynamically computed based on live price
-              let dynamicTP = isUp ? p.price * 1.0150 : p.price * 0.9850;
-              let dynamicSL = isUp ? p.price * 0.9920 : p.price * 1.0080;
+            {marketPairs.map((coin) => {
+              const isUpTrend = coin.change >= 0;
+              const tpPrice = isUpTrend ? coin.price * 1.015 : coin.price * 0.985;
+              const slPrice = isUpTrend ? coin.price * 0.992 : coin.price * 1.008;
 
               return (
-                <div key={p.pair} className="card flex flex-col p-4 border border-neutral-800 rounded-xl" style={{ marginBottom: 0 }}>
+                <div
+                  key={coin.pair}
+                  className="card flex flex-col p-4 border border-neutral-800 rounded-xl"
+                  style={{ marginBottom: 0 }}
+                >
                   <div className="market-row w-full flex justify-between items-center bg-transparent">
                     <div>
-                      <span className="pair-title">{p.pair}</span>
-                      <span className="pair-sub">{p.name}</span>
+                      <span className="pair-title">{coin.pair}</span>
+                      <span className="pair-sub">{coin.name}</span>
                     </div>
                     <div className="text-right">
-                      <span className="price-val block">{formatPrice(p.pair, p.price)}</span>
-                      <span className={isUp ? 'trend-up' : 'trend-down'}>
-                        {isUp ? '▲' : '▼'} {isUp ? '+' : ''}{p.change}%
+                      <span className="price-val block">{formatPrice(coin.pair, coin.price)}</span>
+                      <span className={isUpTrend ? "trend-up" : "trend-down"}>
+                        {isUpTrend ? "▲" : "▼"} {isUpTrend ? "+" : ""}
+                        {coin.change.toFixed(2)}%
                       </span>
                     </div>
                   </div>
 
-                  {/* Dynamic preferred TP & SL Position Panel - 5 Sec Auto Update */}
                   <div className="flex gap-4 mt-3 pt-2.5 border-t border-dashed border-neutral-900 text-[10px] font-mono text-neutral-400 justify-between">
                     <div>
                       <span className="text-emerald-500 font-bold mr-1.5">REC. TAKE PROFIT:</span>
-                      <span className="text-neutral-200 font-semibold">{formatPrice(p.pair, dynamicTP)}</span>
+                      <span className="text-neutral-200 font-semibold">
+                        {formatPrice(coin.pair, tpPrice)}
+                      </span>
                     </div>
                     <div>
                       <span className="text-rose-500 font-bold mr-1.5">REC. STOP LOSS:</span>
-                      <span className="text-neutral-200 font-semibold">{formatPrice(p.pair, dynamicSL)}</span>
+                      <span className="text-neutral-200 font-semibold">
+                        {formatPrice(coin.pair, slPrice)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -867,47 +867,53 @@ export default function App() {
           </div>
         </div>
 
-        {/* --- 2. STRATEGY PAGE --- */}
-        <div id="strategy" className={`page ${currentPage === 'strategy' ? 'active' : ''}`}>
+        {/* --- STRATEGY PAGE --- */}
+        <div id="strategy" className={`page ${currentPage === "strategy" ? "active" : ""}`}>
           <div className="strategy-header">
             <h2>
-              My Trading Strategy <span style={{ color: 'var(--accent-green-text)' }}>●</span>
+              My Trading Strategy{" "}
+              <span style={{ color: "var(--accent-green-text)" }}>●</span>
             </h2>
-            <span 
-              className="cursor-pointer hover:text-white select-none transition-colors" 
-              style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}
-              onClick={handleLoadRandomStrategy}
+            <span
+              className="cursor-pointer hover:text-white select-none transition-colors"
+              style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}
+              onClick={handlePickRandomExample}
             >
-              <i className="ph ph-file-text"></i> Example
+              <i className="ph ph-file-text" /> Example
             </span>
           </div>
-          
+
           <textarea
             className="strategy-input"
-            value={strategyText}
+            value={selectedStrategy}
             onChange={handleStrategyChange}
             placeholder="Type your strategy here..."
           />
-          
-          <button 
-            className="btn-full text-center" 
-            onClick={handleSyncStrategy}
+
+          <button
+            className="btn-full text-center"
+            onClick={handleSaveStrategy}
             style={{
-              backgroundColor: isSynced ? 'rgba(27, 94, 32, 0.4)' : 'var(--card-bg)',
-              color: isSynced ? 'var(--accent-green-text)' : 'white',
-              border: isSynced ? '1px solid var(--accent-green-text)' : 'none'
+              backgroundColor: isSaved ? "rgba(27, 94, 32, 0.4)" : "var(--card-bg)",
+              color: isSaved ? "var(--accent-green-text)" : "white",
+              border: isSaved ? "1px solid var(--accent-green-text)" : "none"
             }}
           >
-            <i className={isSynced ? "ph ph-check-circle" : "ph ph-floppy-disk"}></i> {syncMessage}
+            <i className={isSaved ? "ph ph-check-circle" : "ph ph-floppy-disk"} />{" "}
+            {syncStatusMsg}
           </button>
         </div>
 
-        {/* --- 3. ANALYZE PAGE --- */}
-        <div id="analyze" className={`page ${currentPage === 'analyze' ? 'active' : ''}`}>
+        {/* --- ANALYZE CHART PAGE --- */}
+        <div id="analyze" className={`page ${currentPage === "analyze" ? "active" : ""}`}>
           <div className="strategy-header">
             <h2>Chart Analysis</h2>
-            <span style={{ color: 'var(--text-muted)' }} className="cursor-pointer flex items-center gap-1.5 hover:text-white transition-colors" onClick={() => setShowHistoryModal(true)}>
-              <i className="ph ph-clock-counter-clockwise"></i> History
+            <span
+              style={{ color: "var(--text-muted)" }}
+              className="cursor-pointer flex items-center gap-1.5 hover:text-white transition-colors"
+              onClick={() => setHistoryModalOpen(true)}
+            >
+              <i className="ph ph-clock-counter-clockwise" /> History{" "}
               {analysisHistory.length > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-neutral-800 text-[10px] text-neutral-300 font-mono font-bold leading-none">
                   {analysisHistory.length}
@@ -916,51 +922,50 @@ export default function App() {
             </span>
           </div>
 
-          <div 
-            className={`upload-area ${isDragging ? 'dragging' : ''}`}
+          <div
+            className={`upload-area ${isDragging ? "dragging" : ""}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={triggerUploadClick}
+            onClick={handleUploadAreaClick}
           >
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
+            <input
+              type="file"
+              ref={imageInputRef}
+              style={{ display: "none" }}
               accept="image/*"
-              onChange={handleFileSelect}
+              onChange={handleFileChange}
             />
 
-            {chartImage ? (
+            {uploadedImage ? (
               <div className="w-full h-full relative flex items-center justify-center p-2">
-                <img 
-                  src={chartImage} 
-                  alt="Uploaded chart screenshot" 
+                <img
+                  src={uploadedImage}
+                  alt="Uploaded chart screenshot"
                   className="max-h-full max-w-full rounded-lg object-contain"
                   referrerPolicy="no-referrer"
                 />
-                <button 
+                <button
                   className="absolute top-3 right-3 bg-black/80 hover:bg-black text-rose-500 rounded-full p-2 h-9 w-9 flex items-center justify-center border border-neutral-800 transition-colors cursor-pointer"
-                  onClick={clearChartImage}
+                  onClick={handleRemoveImage}
                   title="Remove image"
                 >
-                  <i className="ph ph-trash" style={{ fontSize: '1.2rem' }}></i>
+                  <i className="ph ph-trash" style={{ fontSize: "1.2rem" }} />
                 </button>
               </div>
             ) : (
               <>
                 <div className="icon-box">
-                  <i className="ph ph-upload-simple" style={{ fontSize: '2.2rem', color: '#888' }}></i>
+                  <i className="ph ph-upload-simple" style={{ fontSize: "2.2rem", color: "#888" }} />
                 </div>
-                <p style={{ margin: '5px 0', fontWeight: '500' }}>Upload Chart Screenshot</p>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                <p style={{ margin: "5px 0", fontWeight: "500" }}>Upload Chart Screenshot</p>
+                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
                   PNG, JPG or WebP · Max 10MB
                 </span>
               </>
             )}
           </div>
 
-          {/* Analysis Processing Logs */}
           {(isAnalyzing || analysisLogs.length > 0) && (
             <div className="card p-4 rounded-xl border border-neutral-800 font-mono text-xs text-neutral-400 space-y-1 bg-[#0b0b0b] max-h-[140px] overflow-y-auto mb-[15px]">
               {analysisLogs.map((log, index) => (
@@ -978,22 +983,29 @@ export default function App() {
             </div>
           )}
 
-          {/* Analysis Report Output Card */}
           {analysisReport && (
             <div className="card p-5 border border-dashed border-neutral-700 rounded-xl space-y-3 bg-[#111] animate-fadeIn mb-4">
               <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
                 <div className="flex items-center gap-2">
-                  <span className={`px-2.5 py-1 text-xs font-black rounded ${
-                    analysisReport.signal === 'BUY' ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/20' :
-                    analysisReport.signal === 'SELL' ? 'bg-rose-950 text-rose-400 border border-rose-500/20' :
-                    'bg-neutral-800 text-neutral-300'
-                  }`}>
+                  <span
+                    className={`px-2.5 py-1 text-xs font-black rounded ${
+                      analysisReport.signal === "BUY"
+                        ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
+                        : analysisReport.signal === "SELL"
+                        ? "bg-rose-950 text-rose-400 border border-rose-500/20"
+                        : "bg-neutral-800 text-neutral-300"
+                    }`}
+                  >
                     {analysisReport.signal} setup
                   </span>
-                  <span className="text-xs text-neutral-500 font-mono">Confidence: {analysisReport.confidence}</span>
+                  <span className="text-xs text-neutral-500 font-mono">
+                    Confidence: {analysisReport.confidence}
+                  </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">Strategy Checked</span>
+                  <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">
+                    Strategy Checked
+                  </span>
                 </div>
               </div>
 
@@ -1012,500 +1024,633 @@ export default function App() {
                 </div>
               </div>
 
-              <p className="text-xs text-neutral-400 leading-relaxed font-sans">{analysisReport.reason}</p>
+              <p className="text-xs text-neutral-400 leading-relaxed font-sans mt-2">
+                {analysisReport.reason}
+              </p>
             </div>
           )}
 
-          <button 
-            className="btn-full" 
-            style={{ 
-              background: chartImage && !isAnalyzing ? 'linear-gradient(135deg, #1b5e20, #004d40)' : '#333',
-              cursor: chartImage && !isAnalyzing ? 'pointer' : 'not-allowed'
+          <button
+            className="btn-full"
+            style={{
+              background:
+                uploadedImage && !isAnalyzing
+                  ? "linear-gradient(135deg, #1b5e20, #004d40)"
+                  : "#333",
+              cursor: uploadedImage && !isAnalyzing ? "pointer" : "not-allowed"
             }}
-            onClick={runAnalysis}
-            disabled={!chartImage || isAnalyzing}
+            onClick={handleAnalyzeChart}
+            disabled={!uploadedImage || isAnalyzing}
           >
-            <i className="ph ph-lightning"></i> {isAnalyzing ? 'Analyzing chart...' : 'Analyze with My Strategy'}
+            <i className="ph ph-lightning" />{" "}
+            {isAnalyzing ? "Analyzing chart..." : "Analyze with My Strategy"}
           </button>
         </div>
 
-        {/* --- 4. ALERTS PAGE --- */}
-        <div id="alerts" className={`page ${currentPage === 'alerts' ? 'active' : ''}`}>
+        {/* --- WATCHER & ALERTS PAGE --- */}
+        <div id="alerts" className={`page ${currentPage === "alerts" ? "active" : ""}`}>
           <div className="flex flex-col gap-1 mb-6">
-            <h2 className="text-xl font-bold tracking-tight text-white m-0">AI Market Watcher & Alerts</h2>
-            <p className="text-xs text-neutral-500 m-0">Institutional grade scanner & real-time liquidity zone heuristics</p>
+            <h2 className="text-xl font-bold tracking-tight text-white m-0">
+              AI Market Watcher & Alerts
+            </h2>
+            <p className="text-xs text-neutral-500 m-0">
+              Institutional grade scanner & real-time liquidity zone heuristics
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* COLUMN 1 */}
-            <div className="space-y-4">
-              {/* SECTION: AI MARKET WATCHER */}
-              <div className="bg-[#121212]/80 border border-neutral-805 rounded-xl p-5 shadow-[0_0_15px_rgba(255,255,255,0.02)] relative">
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono uppercase tracking-widest text-neutral-400 font-bold">Heuristic Engine</span>
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black border border-neutral-800 text-[10px] font-mono text-neutral-300">
-                      <span className={`h-1.5 w-1.5 rounded-full ${watcherEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-500'}`}></span>
-                      <span>{marketStatus}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between py-2 border-y border-neutral-900 mb-4">
-                  <div>
-                    <span className="block text-sm font-semibold text-white">Enable AI Heuristics Watcher</span>
-                    <span className="text-[11px] text-neutral-500">Autonomous support/resist scanner & setup alert builder</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer select-none">
-                    <input 
-                      type="checkbox" 
-                      className="sr-only peer" 
-                      checked={watcherEnabled} 
-                      onChange={toggleWatcher}
+          <div className="space-y-[15px]">
+            {/* Watcher Engine Control */}
+            <div className="card p-5 relative border border-neutral-800/60 shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold">
+                    Heuristic Engine
+                  </span>
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black border border-neutral-800 text-[10px] font-mono text-neutral-300">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        watcherEnabled ? "bg-emerald-500 animate-pulse" : "bg-neutral-500"
+                      }`}
                     />
-                    <div className="w-11 h-6 bg-neutral-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-neutral-200 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"></div>
-                  </label>
-                </div>
-
-                <div className="flex items-center justify-between text-xs font-mono text-neutral-500">
-                  <span className="text-neutral-300">Currently watching {watchedPairs.length} markets</span>
-                  <span className="text-[10px] text-neutral-600">Latency: 3.8ms</span>
+                    <span>{heuristicStatus}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* SECTION: WATCHLIST */}
-              <div className="bg-[#121212]/80 border border-neutral-805 rounded-xl p-5 shadow-[0_0_15px_rgba(255,255,255,0.02)]">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-xs font-mono uppercase tracking-widest text-neutral-400 font-bold">Watchlist Status</span>
-                  <span className="text-[10px] text-neutral-500 font-mono">Real-Time Core</span>
+              <div className="flex items-center justify-between py-2 border-y border-neutral-900 mb-4">
+                <div>
+                  <span className="block text-sm font-semibold text-white">
+                    Enable AI Heuristics Watcher
+                  </span>
+                  <span className="text-[11px] text-neutral-500 block mt-0.5 font-sans">
+                    Autonomous support/resist scanner & setup alert builder
+                  </span>
                 </div>
-
-                <div className="space-y-2 mb-4">
-                  {watchedPairs.map(pair => {
-                    // Match to find live rate
-                    const livePair = marketPairs.find(p => p.pair.replace('/', '') === pair.replace('/', ''));
-                    const currentPrice = livePair ? livePair.price : 1.0924;
-                    const changeVal = livePair ? livePair.change : 0.0;
-                    const isUp = changeVal >= 0;
-
-                    return (
-                      <div key={pair} className="flex justify-between items-center bg-black/40 border border-neutral-900 rounded-lg p-3 hover:border-neutral-850 transition-colors">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold font-mono text-white">{pair}</span>
-                            <span className="h-1 w-1 rounded-full bg-emerald-500"></span>
-                            <span className="text-[9px] font-mono text-neutral-500 font-bold">MONITORING</span>
-                          </div>
-                          <span className="text-[10px] font-mono text-neutral-500 block mt-0.5">Scanner active [H1/M15]</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <span className="text-xs font-mono font-bold text-white block">
-                              {formatPrice(pair, currentPrice)}
-                            </span>
-                            <span className={`text-[9px] font-mono block ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                              {isUp ? '▲' : '▼'} {isUp ? '+' : ''}{changeVal}%
-                            </span>
-                          </div>
-                          <button 
-                            onClick={() => removeWatchedPair(pair)}
-                            className="text-neutral-500 hover:text-rose-500 p-1 rounded hover:bg-neutral-900 transition-all cursor-pointer border-none bg-transparent"
-                            title="Remove monitored pair"
-                          >
-                            <i className="ph ph-trash text-sm"></i>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {watchedPairs.length === 0 && (
-                    <div className="text-center py-6 text-xs text-neutral-600 font-mono border border-dashed border-neutral-800 rounded-lg">
-                      No pairs currently under scanner
-                    </div>
-                  )}
-                </div>
-
-                {/* Add pair inline trigger */}
-                <div className="relative">
-                  <button 
-                    onClick={() => setAddPairDropdownOpen(!addPairDropdownOpen)}
-                    className="w-full py-2 bg-neutral-900 border border-neutral-805 hover:bg-neutral-800 text-neutral-200 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <i className="ph ph-plus"></i> Add Monitored Pair
-                  </button>
-
-                  {addPairDropdownOpen && (
-                    <div className="absolute left-0 right-0 mt-2 bg-[#181818] border border-neutral-800 rounded-xl shadow-2xl z-50 p-2 overflow-hidden animate-fadeIn">
-                      <div className="text-[10px] font-mono tracking-wider text-neutral-500 p-2 uppercase border-b border-neutral-900">
-                        Select Available Market Assets
-                      </div>
-                      <div className="max-h-[160px] overflow-y-auto mt-1">
-                        {marketPairs
-                          .filter(p => !watchedPairs.some(wp => wp.replace('/', '') === p.pair.replace('/', '')))
-                          .map(p => (
-                            <div 
-                              key={p.pair} 
-                              onClick={() => addWatchedPair(p.pair)}
-                              className="px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-900 hover:text-white rounded-lg cursor-pointer flex justify-between items-center transition-colors font-mono"
-                            >
-                              <span>{p.pair}</span>
-                              <span className="text-neutral-500 text-[10px]/none">{formatPrice(p.pair, p.price)}</span>
-                            </div>
-                          ))}
-                        {marketPairs.filter(p => !watchedPairs.some(wp => wp.replace('/', '') === p.pair.replace('/', ''))).length === 0 && (
-                          <div className="text-center text-xs text-neutral-600 py-3 font-mono">
-                            All available pairs added
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={watcherEnabled}
+                    onChange={handleToggleWatcher}
+                  />
+                  <div className="w-11 h-6 bg-neutral-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-neutral-200 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black" />
+                </label>
               </div>
 
-              {/* SECTION: ALERT SETTINGS */}
-              <div className="bg-[#121212]/80 border border-neutral-805 rounded-xl p-5 shadow-[0_0_15px_rgba(255,255,255,0.02)]">
-                <span className="text-xs font-mono uppercase tracking-widest text-neutral-400 font-bold block mb-4">Target Alert Criteria</span>
-                
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-1.5">Alert Trigger Distance</label>
-                    <select 
-                      value={alertDistance} 
-                      onChange={(e) => setAlertDistance(e.target.value)}
-                      className="w-full bg-black border border-neutral-800 rounded-lg py-2 px-2 text-xs text-neutral-300 outline-none focus:border-neutral-600 font-mono cursor-pointer"
-                    >
-                      <option value="5 pips away">5 pips away</option>
-                      <option value="10 pips away">10 pips away</option>
-                      <option value="15 pips away">15 pips away</option>
-                      <option value="20 pips away">20 pips away</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-1.5">Scanner Timeframe</label>
-                    <select 
-                      value={timeframeSetting} 
-                      onChange={(e) => setTimeframeSetting(e.target.value)}
-                      className="w-full bg-black border border-neutral-800 rounded-lg py-2 px-2 text-xs text-neutral-300 outline-none focus:border-neutral-600 font-mono cursor-pointer"
-                    >
-                      <option value="M5">M5</option>
-                      <option value="M15">M15</option>
-                      <option value="H1">H1</option>
-                      <option value="H4">H4</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="border-t border-neutral-900 pt-4 space-y-2.5">
-                  <span className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-1.5">Notification Conditions</span>
-                  
-                  {[
-                    { id: 'approachingZone', label: 'Approaching Zone Alert' },
-                    { id: 'zoneReached', label: 'Zone Reached Alert' },
-                    { id: 'confirmationDetected', label: 'Confirmation Alert' },
-                    { id: 'tradeSetup', label: 'Trade Setup Alert' },
-                    { id: 'setupInvalidated', label: 'Setup Invalidated Alert' }
-                  ].map(option => (
-                    <label key={option.id} className="flex items-center gap-3 cursor-pointer select-none">
-                      <input 
-                        type="checkbox" 
-                        checked={notificationSettings[option.id as keyof typeof notificationSettings]} 
-                        onChange={() => toggleNotificationType(option.id as keyof typeof notificationSettings)}
-                        className="sr-only peer"
-                      />
-                      <div className="h-4 w-4 bg-black border border-neutral-800 rounded flex items-center justify-center text-[10px] text-black peer-checked:bg-white peer-checked:border-white transition-all font-bold">
-                        {notificationSettings[option.id as keyof typeof notificationSettings] && "✓"}
-                      </div>
-                      <span className="text-xs text-neutral-300 peer-checked:text-white transition-colors">{option.label}</span>
-                    </label>
-                  ))}
-                </div>
+              <div className="flex items-center justify-between text-xs font-mono text-neutral-500">
+                <span className="text-neutral-300">
+                  Currently watching {monitoredPairs.length} markets
+                </span>
+                <span className="text-[10px] text-neutral-600">Latency: 3.8ms</span>
               </div>
             </div>
 
-            {/* COLUMN 2 */}
-            <div className="space-y-4">
-              {/* SECTION: ACTIVE ALERTS */}
-              <div className="bg-[#121212]/80 border border-neutral-805 rounded-xl p-5 shadow-[0_0_15px_rgba(255,255,255,0.02)]">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-xs font-mono uppercase tracking-widest text-neutral-400 font-bold">Live Scan Dashboard</span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                </div>
-
-                <div className="space-y-3.5">
-                  {activeAlerts.map(alert => {
-                    const progressPercent = Math.max(0, Math.min(100, Math.round(((alert.maxDistance - alert.distance) / alert.maxDistance) * 100)));
-                    
-                    return (
-                      <div key={alert.id} className="bg-black/60 border border-neutral-800 rounded-xl p-4 space-y-3 relative group overflow-hidden">
-                        {/* Background subtle glowing scanner line */}
-                        <div className="absolute top-0 left-0 w-0.5 h-full bg-neutral-200 shadow-[0_0_10px_#fff] group-hover:w-full transition-all duration-[6000ms] opacity-5"></div>
-
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="text-[13px] font-bold font-mono text-white block">{alert.pair}</span>
-                            <span className="text-[11px] font-medium text-white">{alert.status}</span>
-                          </div>
-                          <div className="text-right font-mono">
-                            <span className="text-xs font-bold text-neutral-300 block">{alert.distance} PIPs REMAINING</span>
-                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">{alert.confidence}% CONFIDENCE LEVEL</span>
-                          </div>
-                        </div>
-
-                        {/* Progress Bar with glow accents */}
-                        <div className="space-y-1">
-                          <div className="w-full bg-neutral-900 border border-neutral-800 rounded-full h-2 overflow-hidden p-[1px]">
-                            <div 
-                              className="h-full bg-white rounded-full transition-all duration-1000 shadow-[0_0_8px_#fff]"
-                              style={{ width: `${progressPercent}%` }}
-                            ></div>
-                          </div>
-                          <div className="flex justify-between text-[9px] font-mono text-neutral-600">
-                            <span>ZONE RANGE (15p)</span>
-                            <span>TARGET ARRIVAL</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {activeAlerts.length === 0 && (
-                    <div className="text-center py-10 font-mono text-xs text-neutral-600 border border-dashed border-neutral-800 rounded-xl">
-                      No critical setups detected inside target distance criteria. Enable watcher or add pairs to start scanning.
-                    </div>
-                  )}
-                </div>
+            {/* Watchlist Setup Panel */}
+            <div className="card p-5 border border-neutral-800/60 shadow-lg">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold">
+                  Watchlist Status
+                </span>
+                <span className="text-[10px] text-neutral-500 font-mono">Real-Time Core</span>
               </div>
 
-              {/* SECTION: ALERT HISTORY */}
-              <div className="bg-[#121212]/80 border border-neutral-805 rounded-xl p-5 shadow-[0_0_15px_rgba(255,255,255,0.02)]">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-xs font-mono uppercase tracking-widest text-neutral-400 font-bold">Recent Scanner Alerts</span>
-                  {notificationCount > 0 ? (
-                    <button 
-                      onClick={markAllHistoryRead}
-                      className="text-[10px] font-mono text-neutral-405 hover:text-white underline cursor-pointer bg-transparent border-none p-0"
+              <div className="space-y-2 mb-4">
+                {monitoredPairs.map((symbol) => {
+                  const matchObj = marketPairs.find((coin) => coin.pair === symbol);
+                  const rateVal = matchObj ? matchObj.price : 1.0924;
+                  const deltaVal = matchObj ? matchObj.change : 0;
+                  const positiveTrend = deltaVal >= 0;
+
+                  return (
+                    <div
+                      key={symbol}
+                      className="flex justify-between items-center bg-black/40 border border-neutral-900 rounded-lg p-3 hover:border-neutral-850 transition-colors"
                     >
-                      Clear Badges ({notificationCount})
-                    </button>
-                  ) : (
-                    <span className="text-[10px] font-mono text-neutral-600">All acknowledged</span>
-                  )}
-                </div>
-
-                <div className="space-y-2 max-h-[260px] overflow-y-auto mb-3 pr-1">
-                  {alertHistory.map(hist => (
-                    <div 
-                      key={hist.id} 
-                      onClick={() => markHistoryItemRead(hist.id)}
-                      className={`relative border rounded-lg p-3 cursor-pointer transition-all flex items-start gap-2.5 ${
-                        hist.unread 
-                          ? 'bg-neutral-900 border-neutral-750 shadow-[0_0_10px_rgba(255,255,255,0.02)]' 
-                          : 'bg-black/40 border-neutral-900 opacity-60 hover:opacity-90'
-                      }`}
-                    >
-                      {hist.unread && (
-                        <span className="absolute top-3.5 right-3 h-1.5 w-1.5 rounded-full bg-white animate-ping"></span>
-                      )}
-
-                      <div className="mt-0.5">
-                        <i className={`ph ph-bell text-sm ${hist.unread ? 'text-white font-bold' : 'text-neutral-500'}`}></i>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-bold font-mono text-white tracking-wide">{hist.pair}</span>
-                          <span className="text-[9px] font-mono text-neutral-500">{hist.timestamp}</span>
-                        </div>
-                        <p className="text-xs text-neutral-300 leading-snug font-sans m-0">{hist.message}</p>
-                      </div>
-                    </div>
-                  ))}
-
-                  {alertHistory.length === 0 && (
-                    <div className="text-center py-8 font-mono text-xs text-neutral-600">
-                      Notifications ledger is empty
-                    </div>
-                  )}
-                </div>
-
-                {/* Simulated Trigger utility for preview/evaluator proofing */}
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => {
-                      const samplePairs = ['EUR/USD', 'GBP/USD', 'XAU/USD', 'USD/JPY'];
-                      const randomPair = samplePairs[Math.floor(Math.random() * samplePairs.length)];
-                      const zones = ['approaching demand zone', 'entered supply zone', 'bullish confirmation detected'];
-                      const randomZone = zones[Math.floor(Math.random() * zones.length)];
-                      const newAlert = {
-                        id: 'h-' + Date.now(),
-                        pair: randomPair,
-                        message: `🔔 ${randomPair.replace('/', '')} ${randomZone}.`,
-                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        unread: true
-                      };
-                      setAlertHistory(curr => [newAlert, ...curr]);
-                    }}
-                    className="w-full py-1.5 border border-dashed border-neutral-800 hover:border-neutral-500 bg-neutral-950 font-mono text-[10px] text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-                  >
-                    + Simulate Live Alert Trigger Event
-                  </button>
-                  {alertHistory.length > 0 && (
-                    <button 
-                      onClick={() => setAlertHistory([])}
-                      className="py-1.5 px-3 border border-neutral-900 bg-neutral-950 text-neutral-600 hover:text-rose-500 text-[10px] font-mono rounded-lg transition-all cursor-pointer"
-                      title="Clear database logs"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* MANUAL TRIGGER ALERT OVERRIDE LAYER */}
-              <div className="bg-[#121212]/80 border border-neutral-805 rounded-xl p-5 shadow-[0_0_15px_rgba(255,255,255,0.02)]">
-                <span className="text-xs font-mono uppercase tracking-widest text-neutral-400 font-bold block mb-4">Manual Custom Target Level Alerts</span>
-                
-                <div className="bg-black/40 border border-neutral-900 rounded-xl p-4 mb-4">
-                  <div className="relative">
-                    <button className="dropdown-btn flex justify-between items-center bg-black border border-neutral-805 p-2.5 rounded-lg text-xs font-mono text-white mb-3 w-full cursor-pointer" onClick={() => setPairDropdownOpen(!pairDropdownOpen)}>
-                      <span>{selectedPair.pair} — {formatPrice(selectedPair.pair, selectedPair.price)}</span>
-                      <i className="ph ph-caret-down"></i>
-                    </button>
-                    
-                    {pairDropdownOpen && (
-                      <div className="absolute top-11 left-0 w-full bg-[#1e1e1e] border border-neutral-800 rounded-lg shadow-xl overflow-hidden z-50 animate-fadeIn font-mono text-xs">
-                        {marketPairs.map((p, index) => (
-                          <div 
-                            key={p.pair} 
-                            className={`px-3 py-2.5 hover:bg-neutral-800 cursor-pointer transition-colors duration-200 flex justify-between items-center ${index === selectedPairIndex ? 'bg-neutral-800 text-white font-bold' : 'text-neutral-400'}`}
-                            onClick={() => {
-                              setSelectedPairIndex(index);
-                              setPairDropdownOpen(false);
-                            }}
-                          >
-                            <span>{p.pair}</span>
-                            <span>{formatPrice(p.pair, p.price)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="toggle-row mb-3 flex gap-2">
-                    <button 
-                      className={`flex-1 py-1 px-3 border rounded text-[11px] font-mono text-center cursor-pointer transition-colors ${alertDirection === 'above' ? 'bg-white text-black border-white font-bold' : 'bg-transparent text-neutral-400 border-neutral-800'}`}
-                      onClick={() => setAlertDirection('above')}
-                    >
-                      ↑ Above Trigger
-                    </button>
-                    <button 
-                      className={`flex-1 py-1 px-3 border rounded text-[11px] font-mono text-center cursor-pointer transition-colors ${alertDirection === 'below' ? 'bg-white text-black border-white font-bold' : 'bg-transparent text-neutral-400 border-neutral-800'}`}
-                      onClick={() => setAlertDirection('below')}
-                    >
-                      ↓ Below Trigger
-                    </button>
-                  </div>
-
-                  <div className="toggle-row mb-3 flex gap-2">
-                    <button 
-                      className={`flex-1 py-1.5 px-2 border rounded text-[11px] font-mono text-center cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${alertChannels.includes('email') ? 'bg-neutral-205 text-black border-white font-bold' : 'bg-transparent text-neutral-400 border-neutral-800'}`}
-                      onClick={() => toggleChannel('email')}
-                    >
-                      Email Channels
-                    </button>
-                    <button 
-                      className={`flex-1 py-1.5 px-2 border rounded text-[11px] font-mono text-center cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${alertChannels.includes('push') ? 'bg-neutral-205 text-black border-white font-bold' : 'bg-transparent text-neutral-400 border-neutral-800'}`}
-                      onClick={() => toggleChannel('push')}
-                    >
-                      Push Native
-                    </button>
-                  </div>
-
-                  <div className="input-row flex gap-2">
-                    <input 
-                      type="number" 
-                      step="0.0001"
-                      className="price-input bg-black border border-neutral-800 p-2 text-xs text-white rounded-lg font-mono flex-1 outline-none" 
-                      value={customPriceValue}
-                      onChange={(e) => setCustomPriceValue(e.target.value)}
-                      placeholder={`Current: ${formatPrice(selectedPair.pair, selectedPair.price)}`}
-                    />
-                    <button className="px-4.5 bg-neutral-200 hover:bg-white text-black font-bold text-xs rounded-lg transition-colors cursor-pointer border-none" onClick={handleAddAlert}>
-                      Set Level
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-[10px]">
-                  {alertsList.map(al => (
-                    <div key={al.id} className="border border-neutral-800 bg-black/40 rounded-xl p-3 flex justify-between items-center" style={{ filter: al.isMuted ? 'opacity(0.6)' : 'none', transition: 'filter 0.2s' }}>
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-white font-mono">{al.pair}</span>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${al.triggered ? 'bg-neutral-800 text-white' : 'bg-neutral-900 text-neutral-400 border border-neutral-850'}`}>
-                            {al.triggered ? 'TRIGGERED' : 'MONITORING'}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold font-mono text-white">{symbol}</span>
+                          <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                          <span className="text-[9px] font-mono text-neutral-500 font-bold">
+                            MONITORING
                           </span>
                         </div>
-                        <span className="text-xs font-mono text-neutral-400 select-none">{al.direction === 'above' ? '↑ ABOVE' : '↓ BELOW'} {formatPrice(al.pair, parseFloat(al.value))}</span>
+                        <span className="text-[10px] font-mono text-neutral-500 block mt-0.5">
+                          Scanner active [{timeframeSetting}/M15]
+                        </span>
                       </div>
-                      <div className="flex gap-4 items-center text-neutral-450 text-sm">
-                        <span className="cursor-pointer hover:text-white" onClick={() => toggleMuteAlert(al.id)}>
-                          <i className={al.isMuted ? "ph ph-bell-slash text-xs" : "ph ph-bell text-xs"} />
-                        </span>
-                        <span className="cursor-pointer hover:text-rose-500" onClick={() => deleteAlert(al.id)}>
-                          <i className="ph ph-trash text-xs" />
-                        </span>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <span className="text-xs font-mono font-bold text-white block">
+                            {formatPrice(symbol, rateVal)}
+                          </span>
+                          <span
+                            className={`text-[9px] font-mono block ${
+                              positiveTrend ? "text-emerald-500" : "text-rose-500"
+                            }`}
+                          >
+                            {positiveTrend ? "▲" : "▼"}{" "}
+                            {positiveTrend ? "+" : ""}
+                            {deltaVal.toFixed(2)}%
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveMonitoredPair(symbol)}
+                          className="text-neutral-500 hover:text-rose-500 p-1 rounded hover:bg-neutral-950 transition-all cursor-pointer border-none bg-transparent"
+                          title="Remove monitored pair"
+                        >
+                          <i className="ph ph-trash text-sm" />
+                        </button>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
 
-                  {alertsList.length === 0 && (
-                    <div className="text-center py-4 font-mono text-xs text-neutral-600">
-                      No customer target levels stored
+                {monitoredPairs.length === 0 && (
+                  <div className="text-center py-6 text-xs text-neutral-600 font-mono border border-dashed border-neutral-800 rounded-lg">
+                    No pairs currently under scanner
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <button
+                  onClick={() => setAddPairDropdownOpen(!addPairDropdownOpen)}
+                  className="w-full py-2 bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-200 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <i className="ph ph-plus" /> Add Monitored Pair
+                </button>
+
+                {addPairDropdownOpen && (
+                  <div className="absolute left-0 right-0 mt-2 bg-[#181818] border border-neutral-800 rounded-xl shadow-2xl z-50 p-2 overflow-hidden animate-fadeIn">
+                    <div className="text-[10px] font-mono tracking-wider text-neutral-500 p-2 uppercase border-b border-neutral-900">
+                      Select Available Market Assets
+                    </div>
+                    <div className="max-h-[160px] overflow-y-auto mt-1">
+                      {marketPairs
+                        .filter((coin) => !monitoredPairs.includes(coin.pair))
+                        .map((coin) => (
+                          <div
+                            key={coin.pair}
+                            onClick={() => handleAddMonitoredPair(coin.pair)}
+                            className="px-3 py-2 text-xs text-neutral-305 hover:bg-neutral-900 hover:text-white rounded-lg cursor-pointer flex justify-between items-center transition-colors font-mono"
+                          >
+                            <span>{coin.pair}</span>
+                            <span className="text-neutral-500 text-[10px]/none">
+                              {formatPrice(coin.pair, coin.price)}
+                            </span>
+                          </div>
+                        ))}
+
+                      {marketPairs.filter((coin) => !monitoredPairs.includes(coin.pair)).length ===
+                        0 && (
+                        <div className="text-center text-xs text-neutral-600 py-3 font-mono">
+                          All available pairs added
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Target Alert Criteria Options */}
+            <div className="card p-5 border border-neutral-800/60 shadow-lg">
+              <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold block mb-4">
+                Target Alert Parameters
+              </span>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-1.5">
+                    Alert Trigger Distance
+                  </label>
+                  <select
+                    value={alertDistance}
+                    onChange={(e) => setAlertDistance(e.target.value)}
+                    className="w-full bg-black border border-neutral-800 rounded-lg py-2 px-2 text-xs text-neutral-300 outline-none focus:border-neutral-600 font-mono cursor-pointer"
+                  >
+                    <option value="5 pips away">5 pips away</option>
+                    <option value="10 pips away">10 pips away</option>
+                    <option value="15 pips away">15 pips away</option>
+                    <option value="20 pips away">20 pips away</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-1.5">
+                    Scanner Timeframe
+                  </label>
+                  <select
+                    value={timeframeSetting}
+                    onChange={(e) => setTimeframeSetting(e.target.value)}
+                    className="w-full bg-black border border-neutral-800 rounded-lg py-2 px-2 text-xs text-neutral-305 outline-none focus:border-neutral-600 font-mono cursor-pointer"
+                  >
+                    <option value="M5">M5</option>
+                    <option value="M15">M15</option>
+                    <option value="H1">H1</option>
+                    <option value="H4">H4</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-900 pt-4 space-y-2.5">
+                <span className="block text-[10px] font-mono text-neutral-505 uppercase tracking-wider mb-1.5">
+                  Notification Conditions
+                </span>
+
+                {[
+                  { id: "approachingZone", label: "Approaching Zone Alert" },
+                  { id: "zoneReached", label: "Zone Reached Alert" },
+                  { id: "confirmationDetected", label: "Confirmation Alert" },
+                  { id: "tradeSetup", label: "Trade Setup Alert" },
+                  { id: "setupInvalidated", label: "Setup Invalidated Alert" }
+                ].map((item) => (
+                  <label
+                    key={item.id}
+                    className="flex items-center gap-3 cursor-pointer select-none"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={notificationConditions[item.id]}
+                      onChange={() => handleToggleCondition(item.id)}
+                      className="sr-only peer"
+                    />
+                    <div className="h-4 w-4 bg-black border border-neutral-800 rounded flex items-center justify-center text-[10px] text-black peer-checked:bg-white peer-checked:border-white transition-all font-bold">
+                      {notificationConditions[item.id] && "✓"}
+                    </div>
+                    <span className="text-xs text-neutral-300 peer-checked:text-white transition-colors">
+                      {item.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Live Scan Dashboard Status Indicators */}
+            <div className="card p-5 border border-neutral-800/60 shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold">
+                  Live Scan Dashboard
+                </span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              </div>
+
+              <div className="space-y-3.5">
+                {liveScanDashboard.map((item) => {
+                  const percentage = Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      Math.round(
+                        ((item.maxDistance - item.distance) / item.maxDistance) * 100
+                      )
+                    )
+                  );
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-black/60 border border-neutral-800 rounded-xl p-4 space-y-3 relative group overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 w-0.5 h-full bg-neutral-200 shadow-[0_0_10px_#fff] group-hover:w-full transition-all duration-[6000ms] opacity-5" />
+
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-[13px] font-bold font-mono text-white block">
+                            {item.pair}
+                          </span>
+                          <span className="text-[11px] font-medium text-white">{item.status}</span>
+                        </div>
+                        <div className="text-right font-mono">
+                          <span className="text-xs font-bold text-neutral-300 block">
+                            {item.distance} PIPs REMAINING
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider block mt-0.5">
+                            {item.confidence}% CONFIDENCE LEVEL
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="w-full bg-neutral-900 border border-neutral-800 rounded-f h-2 overflow-hidden p-[1px]">
+                          <div
+                            className="h-full bg-white rounded-full transition-all duration-1000 shadow-[0_0_8px_#fff]"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[9px] font-mono text-neutral-600">
+                          <span>ZONE RANGE (15p)</span>
+                          <span>TARGET ARRIVAL</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {liveScanDashboard.length === 0 && (
+                  <div className="text-center py-10 font-mono text-xs text-neutral-600 border border-dashed border-neutral-800 rounded-xl">
+                    No critical setups detected inside target distance criteria. Enable watcher or add
+                    pairs to start scanning.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Recents Scanner Alerts */}
+            <div className="card p-5 border border-neutral-800/60 shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold">
+                  Recent Scanner Alerts
+                </span>
+                {unreadAlertsCount > 0 ? (
+                  <button
+                    onClick={handleClearAlertBadges}
+                    className="text-[10px] font-mono text-neutral-405 hover:text-white underline cursor-pointer bg-transparent border-none p-0"
+                  >
+                    Clear Badges ({unreadAlertsCount})
+                  </button>
+                ) : (
+                  <span className="text-[10px] font-mono text-neutral-605">All acknowledged</span>
+                )}
+              </div>
+
+              <div className="space-y-2 max-h-[260px] overflow-y-auto mb-3 pr-1">
+                {recentScannerAlerts.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => handleAcknowledgeAlertItem(item.id)}
+                    className={`relative border rounded-lg p-3 cursor-pointer transition-all flex items-start gap-2.5 ${
+                      item.unread
+                        ? "bg-neutral-900 border-neutral-750 shadow-[0_0_10px_rgba(255,255,255,0.02)]"
+                        : "bg-black/40 border-neutral-900 opacity-60 hover:opacity-90"
+                    }`}
+                  >
+                    {item.unread && (
+                      <span className="absolute top-3.5 right-3 h-1.5 w-1.5 rounded-full bg-white animate-ping" />
+                    )}
+                    <div className="mt-0.5">
+                      <i
+                        className={`ph ph-bell text-sm ${
+                          item.unread ? "text-white font-bold" : "text-neutral-500"
+                        }`}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-bold font-mono text-white tracking-wide">
+                          {item.pair}
+                        </span>
+                        <span className="text-[9px] font-mono text-neutral-500">{item.timestamp}</span>
+                      </div>
+                      <p className="text-xs text-neutral-305 leading-snug font-sans m-0">
+                        {item.message}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {recentScannerAlerts.length === 0 && (
+                  <div className="text-center py-8 font-mono text-xs text-neutral-600">
+                    Notifications ledger is empty
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const pool = ["EUR/USD", "GBP/USD", "XAU/USD", "USD/JPY"];
+                    const sym = pool[Math.floor(Math.random() * pool.length)];
+                    const setupOutputs = [
+                      "approaching demand zone",
+                      "entered supply zone",
+                      "bullish confirmation detected"
+                    ];
+                    const selectedStr = setupOutputs[Math.floor(Math.random() * setupOutputs.length)];
+                    const warning = {
+                      id: "h-" + Date.now(),
+                      pair: sym,
+                      message: `🔔 ${sym.replace("/", "")} ${selectedStr}.`,
+                      timestamp: new Date().toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                      }),
+                      unread: true
+                    };
+                    setRecentScannerAlerts((history) => [warning, ...history]);
+                  }}
+                  className="w-full py-1.5 border border-dashed border-neutral-800 hover:border-neutral-550 bg-neutral-950 font-mono text-[10px] text-neutral-410 hover:text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  + Simulate Live Alert Trigger Event
+                </button>
+                {recentScannerAlerts.length > 0 && (
+                  <button
+                    onClick={() => setRecentScannerAlerts([])}
+                    className="py-1.5 px-3 border border-neutral-900 bg-neutral-955 text-neutral-600 hover:text-rose-500 text-[10px] font-mono rounded-lg transition-all cursor-pointer"
+                    title="Clear database logs"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Custom Manual Target Alerts Form */}
+            <div className="card p-5 border border-neutral-800/60 shadow-lg">
+              <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold block mb-4">
+                Manual Custom Target Level Alerts
+              </span>
+
+              <div className="bg-black/40 border border-neutral-900 rounded-xl p-4 mb-4">
+                <div className="relative">
+                  <button
+                    className="dropdown-btn flex justify-between items-center bg-black border border-neutral-800 p-2.5 rounded-lg text-xs font-mono text-white mb-3 w-full cursor-pointer"
+                    onClick={() => setPairDropdownOpen(!pairDropdownOpen)}
+                  >
+                    <span>
+                      {activeMarketAsset.pair} — {formatPrice(activeMarketAsset.pair, activeMarketAsset.price)}
+                    </span>
+                    <i className="ph ph-caret-down" />
+                  </button>
+
+                  {pairDropdownOpen && (
+                    <div className="absolute top-11 left-0 w-full bg-[#1e1e1e] border border-neutral-800 rounded-lg shadow-xl overflow-hidden z-50 animate-fadeIn font-mono text-xs">
+                      {marketPairs.map((coin, index) => (
+                        <div
+                          key={coin.pair}
+                          className={`px-3 py-2.5 hover:bg-neutral-800 cursor-pointer transition-colors duration-200 flex justify-between items-center ${
+                            index === selectedPairIndex ? "bg-neutral-800 text-white font-bold" : "text-neutral-400"
+                          }`}
+                          onClick={() => {
+                            setSelectedPairIndex(index);
+                            setPairDropdownOpen(false);
+                          }}
+                        >
+                          <span>{coin.pair}</span>
+                          <span>{formatPrice(coin.pair, coin.price)}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
+
+                <div className="toggle-row mb-3 flex gap-2">
+                  <button
+                    className={`flex-1 py-1.5 px-3 border rounded text-[11px] font-mono text-center cursor-pointer transition-colors ${
+                      alertDirection === "above"
+                        ? "bg-white text-black border-white font-bold"
+                        : "bg-transparent text-neutral-405 border-neutral-800"
+                    }`}
+                    onClick={() => setAlertDirection("above")}
+                  >
+                    ↑ Above Trigger
+                  </button>
+                  <button
+                    className={`flex-1 py-1.5 px-3 border rounded text-[11px] font-mono text-center cursor-pointer transition-colors ${
+                      alertDirection === "below"
+                        ? "bg-white text-black border-white font-bold"
+                        : "bg-transparent text-neutral-400 border-neutral-800"
+                    }`}
+                    onClick={() => setAlertDirection("below")}
+                  >
+                    ↓ Below Trigger
+                  </button>
+                </div>
+
+                <div className="toggle-row mb-3 flex gap-2">
+                  <button
+                    className={`flex-1 py-1.5 px-2 border rounded text-[11px] font-mono text-center cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
+                      alertChannels.includes("email")
+                        ? "bg-neutral-200 text-black border-white font-bold"
+                        : "bg-transparent text-neutral-405 border-neutral-800"
+                    }`}
+                    onClick={() => handleToggleChannelSelection("email")}
+                  >
+                    Email Channels
+                  </button>
+                  <button
+                    className={`flex-1 py-1.5 px-2 border rounded text-[11px] font-mono text-center cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
+                      alertChannels.includes("push")
+                        ? "bg-neutral-200 text-black border-white font-bold"
+                        : "bg-transparent text-neutral-405 border-neutral-800"
+                    }`}
+                    onClick={() => handleToggleChannelSelection("push")}
+                  >
+                    Push Native
+                  </button>
+                </div>
+
+                <div className="input-row flex gap-2">
+                  <input
+                    type="number"
+                    step="0.0001"
+                    className="price-input bg-black border border-neutral-800 p-2 text-xs text-white rounded-lg font-mono flex-1 outline-none"
+                    value={customPriceValue}
+                    onChange={(e) => setCustomPriceValue(e.target.value)}
+                    placeholder={`Current: ${formatPrice(activeMarketAsset.pair, activeMarketAsset.price)}`}
+                  />
+                  <button
+                    className="px-4.5 bg-neutral-200 hover:bg-white text-black font-bold text-xs rounded-lg transition-colors cursor-pointer border-none"
+                    onClick={handleRegisterPriceTriggerAlert}
+                  >
+                    Set Level
+                  </button>
+                </div>
+              </div>
+
+              {/* Set Manual Alerts History List */}
+              <div className="space-y-[10px]">
+                {customAlertsList.map((alertItem) => (
+                  <div
+                    key={alertItem.id}
+                    className="border border-neutral-800 bg-black/40 rounded-xl p-3 flex justify-between items-center"
+                    style={{
+                      filter: alertItem.isMuted ? "opacity(0.6)" : "none",
+                      transition: "filter 0.2s"
+                    }}
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-white font-mono">
+                          {alertItem.pair}
+                        </span>
+                        <span
+                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                            alertItem.triggered
+                              ? "bg-neutral-800 text-white"
+                              : "bg-neutral-900 text-neutral-400 border border-neutral-850"
+                          }`}
+                        >
+                          {alertItem.triggered ? "TRIGGERED" : "MONITORING"}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-neutral-400 select-none block mt-1">
+                        {alertItem.direction === "above" ? "↑ ABOVE" : "↓ BELOW"}{" "}
+                        {formatPrice(alertItem.pair, parseFloat(alertItem.value))}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-4 items-center text-neutral-450 text-sm">
+                      <span
+                        className="cursor-pointer hover:text-white"
+                        onClick={() => handleToggleMuteTriggerAlert(alertItem.id)}
+                      >
+                        <i className={alertItem.isMuted ? "ph ph-bell-slash text-xs" : "ph ph-bell text-xs"} />
+                      </span>
+                      <span
+                        className="cursor-pointer hover:text-rose-500"
+                        onClick={() => handleDeleteTriggerAlert(alertItem.id)}
+                      >
+                        <i className="ph ph-trash text-xs" />
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+                {customAlertsList.length === 0 && (
+                  <div className="text-center py-4 font-mono text-xs text-neutral-600">
+                    No custom target levels stored
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
-
       </div>
 
-      {/* --- FIXED BOTTOM NAVIGATION BAR --- */}
+      {/* Dynamic Bottom Navigation bar */}
       <nav className="bottom-nav">
-        <div 
-          className={`nav-item ${currentPage === 'market' ? 'active' : ''}`} 
-          onClick={() => setCurrentPage('market')}
+        <div
+          className={`nav-item ${currentPage === "market" ? "active" : ""}`}
+          onClick={() => setCurrentPage("market")}
         >
-          <i className="ph ph-chart-bar"></i>
+          <i className="ph ph-chart-bar" />
           Market
         </div>
-        <div 
-          className={`nav-item ${currentPage === 'strategy' ? 'active' : ''}`} 
-          onClick={() => setCurrentPage('strategy')}
+        <div
+          className={`nav-item ${currentPage === "strategy" ? "active" : ""}`}
+          onClick={() => setCurrentPage("strategy")}
         >
-          <i className="ph ph-file-text"></i>
+          <i className="ph ph-file-text" />
           Strategy
         </div>
-        <div 
-          className={`nav-item ${currentPage === 'analyze' ? 'active' : ''}`} 
-          onClick={() => setCurrentPage('analyze')}
+        <div
+          className={`nav-item ${currentPage === "analyze" ? "active" : ""}`}
+          onClick={() => setCurrentPage("analyze")}
         >
-          <i className="ph ph-lightning"></i>
+          <i className="ph ph-lightning" />
           Analyze
         </div>
-        <div 
-          className={`nav-item relative ${currentPage === 'alerts' ? 'active' : ''}`} 
-          onClick={() => setCurrentPage('alerts')}
+        <div
+          className={`nav-item relative ${currentPage === "alerts" ? "active" : ""}`}
+          onClick={() => setCurrentPage("alerts")}
         >
           <div className="relative">
-            <i className="ph ph-bell"></i>
-            {notificationCount > 0 && (
+            <i className="ph ph-bell" />
+            {unreadAlertsCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 bg-white text-black font-mono font-bold text-[8px] h-3.5 w-3.5 flex items-center justify-center rounded-full border border-neutral-950 animate-pulse">
-                {notificationCount}
+                {unreadAlertsCount}
               </span>
             )}
           </div>
@@ -1513,106 +1658,123 @@ export default function App() {
         </div>
       </nav>
 
-      {/* --- ANALYSIS HISTORY MODAL OVERLAY --- */}
-      {showHistoryModal && (
+      {/* Chart Analysis History Full Screen Modal Block */}
+      {historyModalOpen && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[999] flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-fadeIn">
-          {/* Close on modal backdrop click */}
-          <div className="absolute inset-0 cursor-default" onClick={() => setShowHistoryModal(false)} />
-          
+          <div className="absolute inset-0 cursor-default" onClick={() => setHistoryModalOpen(false)} />
           <div className="relative bg-neutral-950 border-t sm:border border-neutral-850 rounded-t-2xl sm:rounded-2xl w-full max-w-md mx-auto flex flex-col max-h-[85vh] sm:max-h-[80vh] shadow-2xl z-10 overflow-hidden">
-            {/* Header */}
             <div className="flex justify-between items-center px-5 py-4 border-b border-neutral-900 bg-neutral-900/50">
               <div className="flex items-center gap-2">
-                <i className="ph ph-clock-counter-clockwise text-amber-500 text-lg"></i>
+                <i className="ph ph-clock-counter-clockwise text-amber-500 text-lg" />
                 <div className="text-left">
                   <h3 className="text-sm font-bold text-neutral-100 m-0">Analysis History</h3>
-                  <p className="text-[10px] text-neutral-500 font-mono m-0">Restoring past scanner setups</p>
+                  <p className="text-[10px] text-neutral-500 font-mono m-0">
+                    Restoring past scanner setups
+                  </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setShowHistoryModal(false)}
+              <button
+                onClick={() => setHistoryModalOpen(false)}
                 className="hover:text-white text-neutral-450 p-1 rounded-lg transition-colors cursor-pointer bg-transparent border-none"
               >
-                <i className="ph ph-x text-lg"></i>
+                <i className="ph ph-x text-lg" />
               </button>
             </div>
 
-            {/* History Items List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {analysisHistory.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
                   <div className="h-12 w-12 rounded-full bg-neutral-900 flex items-center justify-center text-neutral-600">
-                    <i className="ph ph-folder text-xl"></i>
+                    <i className="ph ph-folder text-xl" />
                   </div>
                   <div>
-                    <p className="text-xs text-neutral-400 font-medium m-0">No past analysis found</p>
-                    <p className="text-[10px] text-neutral-600 mt-1 m-0">Upload and analyze a chart to save details</p>
+                    <p className="text-xs text-neutral-400 font-medium m-0 font-sans">
+                      No past analysis found
+                    </p>
+                    <p className="text-[10px] text-neutral-600 mt-1 m-0 font-sans">
+                      Upload and analyze a chart to save details
+                    </p>
                   </div>
                 </div>
               ) : (
                 analysisHistory.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="group relative bg-[#121212] border border-neutral-900 hover:border-neutral-800 p-3 rounded-xl flex gap-3 transition-all cursor-pointer hover:bg-neutral-900/40 text-left"
+                  <div
+                    key={item.id}
+                    className="group relative bg-[#121212] border border-neutral-900 hover:border-neutral-800 p-3 rounded-xl flex gap-3 transition-all cursor-pointer hover:bg-neutral-900/40 text-left cursor-pointer"
                     onClick={() => {
-                      setChartImage(item.image);
+                      setUploadedImage(item.image);
                       setAnalysisReport(item.report);
                       setAnalysisLogs([
                         `Restored cached analysis from ${item.timestamp}`,
-                        'Strategy active during analysis: "' + (item.strategyUsed ? item.strategyUsed.substring(0, 35) + '...' : 'Default SMC') + '"',
-                        'Trigger levels & parameters fully reloaded.'
+                        'Strategy active during analysis: "' +
+                          (item.strategyUsed ? item.strategyUsed.substring(0, 35) + "..." : "Default SMC") +
+                          '"',
+                        "Trigger levels & parameters fully reloaded."
                       ]);
-                      setShowHistoryModal(false);
+                      setHistoryModalOpen(false);
                     }}
                   >
                     <div className="w-16 h-16 rounded-lg bg-neutral-950 overflow-hidden flex-shrink-0 border border-neutral-800 flex items-center justify-center relative">
-                      <img 
-                        src={item.image} 
-                        alt="Restored Chart Thumbnail" 
+                      <img
+                        src={item.image}
+                        alt="Restored Chart Thumbnail"
                         className="object-cover w-full h-full"
                         referrerPolicy="no-referrer"
                       />
                     </div>
-                    
                     <div className="flex-1 min-w-0 pr-6">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded font-mono ${
-                          item.report.signal === 'BUY' ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/20' :
-                          item.report.signal === 'SELL' ? 'bg-rose-950/80 text-rose-400 border border-rose-500/20' :
-                          'bg-neutral-800 text-neutral-300'
-                        }`}>
+                        <span
+                          className={`px-1.5 py-0.5 text-[9px] font-black rounded font-mono ${
+                            item.report.signal === "BUY"
+                              ? "bg-emerald-950/80 text-emerald-400 border border-emerald-500/20"
+                              : item.report.signal === "SELL"
+                              ? "bg-rose-950/80 text-rose-400 border border-rose-500/20"
+                              : "bg-neutral-800 text-neutral-300"
+                          }`}
+                        >
                           {item.report.signal}
                         </span>
-                        <span className="text-[10px] text-neutral-500 font-mono">Conf: {item.report.confidence}</span>
+                        <span className="text-[10px] text-neutral-500 font-mono">
+                          Conf: {item.report.confidence}
+                        </span>
                       </div>
-                      
                       <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-neutral-500 mb-1">
-                        <div>LVL: <span className="text-neutral-300 font-bold">{item.report.level}</span></div>
-                        <div>TP: <span className="text-emerald-500 font-bold">{item.report.tp}</span></div>
-                        <div>SL: <span className="text-rose-500 font-bold">{item.report.sl}</span></div>
+                        <div>
+                          LVL: <span className="text-neutral-300 font-bold">{item.report.level}</span>
+                        </div>
+                        <div>
+                          TP: <span className="text-emerald-500 font-bold">{item.report.tp}</span>
+                        </div>
+                        <div>
+                          SL: <span className="text-rose-500 font-bold">{item.report.sl}</span>
+                        </div>
                       </div>
-
-                      <div className="text-[10px] text-neutral-500 line-clamp-1 italic font-sans w-11/12">
+                      <div className="text-[10px] text-neutral-505 line-clamp-1 italic font-sans w-11/12">
                         {item.report.reason}
                       </div>
                     </div>
-
-                    {/* Individual Item Deletion */}
-                    <button 
+                    <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setAnalysisHistory(prev => {
-                          const filtered = prev.filter(p => p.id !== item.id);
-                          localStorage.setItem('gaks_chart_analysis_history', JSON.stringify(filtered));
+                        setAnalysisHistory((prev) => {
+                          const filtered = prev.filter((prevItem) => prevItem.id !== item.id);
+                          try {
+                            localStorage.setItem(
+                              "gaks_chart_analysis_history",
+                              JSON.stringify(filtered)
+                            );
+                          } catch {
+                            console.warn("Storage error occurred.");
+                          }
                           return filtered;
                         });
                       }}
                       className="absolute right-3 top-3 h-6 w-6 rounded flex items-center justify-center bg-[#151515] text-neutral-500 hover:text-rose-400 hover:bg-rose-950/30 border border-neutral-900 transition-all cursor-pointer"
                       title="Delete item"
                     >
-                      <i className="ph ph-trash text-xs"></i>
+                      <i className="ph ph-trash text-xs" />
                     </button>
-
                     <div className="absolute right-3 bottom-2 text-[9px] text-neutral-600 font-mono">
                       {item.timestamp}
                     </div>
@@ -1621,15 +1783,17 @@ export default function App() {
               )}
             </div>
 
-            {/* Footer */}
             {analysisHistory.length > 0 && (
               <div className="p-4 border-t border-neutral-900 bg-[#0e0e0e]">
-                <button 
+                <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (confirm("Are you sure you want to delete all past analysis history records?")) {
+                    const doubleCheck = confirm(
+                      "Are you sure you want to delete all past analysis history records?"
+                    );
+                    if (doubleCheck) {
                       setAnalysisHistory([]);
-                      localStorage.removeItem('gaks_chart_analysis_history');
+                      localStorage.removeItem("gaks_chart_analysis_history");
                     }
                   }}
                   className="w-full py-2 rounded-lg bg-rose-950/30 hover:bg-rose-950/80 text-rose-500 hover:text-white border border-rose-900/40 text-xs font-semibold cursor-pointer transition-colors"

@@ -18,6 +18,70 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Simulator endpoint for Supabase Edge Function testing
+  app.post("/api/test-supabase-edge-gemini", async (req, res) => {
+    const { prompt, model = "gemini-2.5-flash", temperature = 0.7, systemInstruction } = req.body;
+
+    if (!prompt || typeof prompt !== "string" || prompt.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        error: "Validation Failure",
+        details: "Required parameter 'prompt' is missing or empty inside the request body."
+      });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        error: "Configuration Secret Missing",
+        details: "GEMINI_API_KEY is not defined in the backend environment. Please add your Gemini API Key in the Settings (Gear Icon) > Secrets panel."
+      });
+    }
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      // Call the requested Gemini model
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          temperature: Number(temperature),
+          ...(systemInstruction ? { systemInstruction } : {})
+        }
+      });
+
+      const responseText = response.text || "";
+
+      return res.json({
+        success: true,
+        model: model,
+        response: responseText,
+        finishReason: "STOP",
+        metadata: {
+          promptTokens: Math.floor(prompt.length / 3) + 15,
+          candidatesTokens: Math.floor(responseText.length / 3) + 20,
+          totalTokens: Math.floor((prompt.length + responseText.length) / 3) + 35
+        }
+      });
+    } catch (error: any) {
+      console.error("Test Supabase Edge Function Error:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Upstream AI Orchestrator Failure",
+        details: error.message || "An error occurred during query execution inside Deno simulator."
+      });
+    }
+  });
+
   // Simple server-side caching to prevent Twelve Data rate limits (HTTP 429)
   let cachedRates: Record<string, { price: number; change: number }> = {};
   let lastFetchTime = 0;
