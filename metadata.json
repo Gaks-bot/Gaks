@@ -1,0 +1,8 @@
+{
+  "name": "Gaks Ai - Pro Trading",
+  "description": "Interactive pro trading companion with live rates, integrated strategies, chart analysis, and customizable alerts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gaks AI - Premium Institutional Trading Master Dashboard</title>
+    <!-- Tailwind CSS v3 Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons Web-font CDN -->
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/css/icons.css">
+    <!-- React & ReactDOM (Umd) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel Jsx Compiler -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Google Fonts for Premium Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Space Grotesk"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #050505;
+            -webkit-font-smoothing: antialiased;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #080808;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f1f1f;
+            border-radius: 99px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2a2a2a;
+        }
+        /* Custom animations */
+        @keyframes subtle-pulse {
+            0%, 100% { opacity: 0.35; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(1.05); }
+        }
+        .anim-subtle-pulse {
+            animation: subtle-pulse 2.5s infinite ease-in-out;
+        }
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        .anim-scanline {
+            animation: scanline 6s linear infinite;
+        }
+    </style>
+</head>
+<body class="bg-[#050505] min-h-screen text-white select-none font-sans overflow-x-hidden pb-28">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Static Constants
+        const STRATEGIES_LIST = [
+            `Supply & Demand / Smart Money Concepts (SMC) Strategy\n\n- Identify HTF (H4/H1) primary supply & demand zones.\n- Wait for LTF (M15/M5) price to retrace into the HTF zone.\n- Look for Change of Character (CHoCH) on M5 with strong displacement.\n- Entry at the fair value gap (FVG) or order block (OB).`,
+            `London Session Breakout Strategy\n\n- Track the Asian Range high and low (00:00 to 07:00 UTC).\n- Apply 15M breakout lines for the Asian Session boundaries.\n- Entry on London Open breakout candle close outside session high/low.`,
+            `Bollinger Bands Mean Reversion Strategy\n\n- Set indicators: Bollinger Bands (20, 2) on the H1 timeframe.\n- Wait for price to touch or pierce the outer Band (overextended state).\n- Enter on close of the rejection candle towards the 20-period SMA.`
+        ];
+
+        const INITIAL_MARKET_PAIRS = [
+            { pair: 'EUR/USD', name: 'Euro / US Dollar', price: 1.0924, change: 0.34 },
+            { pair: 'GBP/USD', name: 'Great British Pound / USD', price: 1.2681, change: -0.12 },
+            { pair: 'USD/JPY', name: 'US Dollar / Japanese Yen', price: 151.42, change: 0.51 },
+            { pair: 'XAU/USD', name: 'Gold / US Dollar', price: 2164.80, change: 1.45 }
+        ];
+
+        function formatPrice(pair, price) {
+            if (pair.includes('JPY') || pair.includes('XAU') || pair.includes('BTC') || pair.includes('ETH')) {
+                return price.toFixed(2);
+            }
+            return price.toFixed(4);
+        }
+
+        function App() {
+            // General layout / page routing
+            const [currentPage, setCurrentPage] = useState('alerts'); // Default to target page of user prompt
+            const [marketPairs, setMarketPairs] = useState(INITIAL_MARKET_PAIRS);
+            const [selectedStrategy, setSelectedStrategy] = useState(STRATEGIES_LIST[0]);
+            
+            // Image analyzer states
+            const [uploadedImage, setUploadedImage] = useState(null);
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+            const [analysisLogs, setAnalysisLogs] = useState([]);
+            const [analysisReport, setAnalysisReport] = useState(null);
+
+            // Manual Alerts State
+            const [alertsList, setAlertsList] = useState([
+                { id: 'al1', pair: 'EUR/USD', value: '1.0950', direction: 'above', triggered: false, channels: ['email'], isMuted: false }
+            ]);
+            const [selectedPairIndex, setSelectedPairIndex] = useState(0);
+            const [customPriceValue, setCustomPriceValue] = useState('');
+            const [alertDirection, setAlertDirection] = useState('above');
+            const [alertChannels, setAlertChannels] = useState(['email']);
+            const [pairDropdownOpen, setPairDropdownOpen] = useState(false);
+
+            // --- SECTION 6: FUTURE BACKEND PLACEHOLDERS & LOCAL REPLICAS ---
+            const [watcherEnabled, setWatcherEnabled] = useState(true);
+            const [watchedPairs, setWatchedPairs] = useState(['EUR/USD', 'GBP/USD', 'XAU/USD', 'USD/JPY']);
+            const [alertDistance, setAlertDistance] = useState('10 pips away');
+            const [timeframeSetting, setTimeframeSetting] = useState('H1');
+            const [notificationSettings, setNotificationSettings] = useState({
+                approachingZone: true,
+                zoneReached: true,
+                confirmationDetected: true,
+                tradeSetup: true,
+                setupInvalidated: false
+            });
+            const [alertHistory, setAlertHistory] = useState([
+                { id: 'h1', pair: 'EUR/USD', message: '🔔 EURUSD approaching demand zone.', timestamp: '10:42 AM', unread: true },
+                { id: 'h2', pair: 'GBP/USD', message: '🔔 GBPUSD entered supply zone.', timestamp: '10:15 AM', unread: false },
+                { id: 'h3', pair: 'XAU/USD', message: '🔔 XAUUSD bullish confirmation detected.', timestamp: '09:30 AM', unread: false }
+            ]);
+            const [activeAlerts, setActiveAlerts] = useState([
+                { id: 'aa1', pair: 'EUR/USD', status: 'Approaching Demand Zone', distance: 8, maxDistance: 15, confidence: 82 }
+            ]);
+            const [marketStatus, setMarketStatus] = useState('Monitoring');
+            const [addPairDropdownOpen, setAddPairDropdownOpen] = useState(false);
+
+            // Computed badge count
+            const notificationCount = alertHistory.filter(h => h.unread).length;
+
+            // --- FLUTTER TICK ENGINE fallback for Rates & Signals ---
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    // Fluctuate prices
+                    setMarketPairs(prev => prev.map(p => {
+                        const fluctuation = (Math.random() - 0.5) * 0.0004;
+                        const factor = p.pair.includes('JPY') || p.pair.includes('XAU') ? 100 : 1;
+                        const newPrice = p.price + (fluctuation * factor);
+                        const changePercent = p.change + (Math.random() - 0.5) * 0.04;
+                        return {
+                            ...p,
+                            price: parseFloat(newPrice.toFixed(pairDropdownOpen ? 4 : 4)), // helper
+                            change: parseFloat(changePercent.toFixed(2))
+                        };
+                    }));
+
+                    // Volatility alert generator for Active Alerts panel if watcher is active
+                    if (watcherEnabled) {
+                        setActiveAlerts(prev => prev.map(a => {
+                            const delta = Math.random() > 0.5 ? 1 : -1;
+                            let newDistance = a.distance + delta;
+                            if (newDistance < 1) newDistance = 1;
+                            if (newDistance > 15) newDistance = 15;
+
+                            // Create live history notification
+                            if (newDistance <= 4 && Math.random() > 0.7) {
+                                const isDemand = a.status.includes('Demand');
+                                const subMsg = isDemand ? 'approaching demand zone' : 'entered supply zone';
+                                const fullMsg = `🔔 ${a.pair.replace('/', '')} ${subMsg}.`;
+                                setAlertHistory(curr => {
+                                    if (curr.some(c => c.message === fullMsg)) return curr;
+                                    return [
+                                        {
+                                            id: 'h-' + Date.now(),
+                                            pair: a.pair,
+                                            message: fullMsg,
+                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                            unread: true
+                                        },
+                                        ...curr
+                                    ];
+                                });
+                            }
+
+                            return { ...a, distance: newDistance };
+                        }));
+                    }
+                }, 4000);
+                return () => clearInterval(interval);
+            }, [watcherEnabled]);
+
+            // Handlers
+            const toggleWatcher = () => {
+                const next = !watcherEnabled;
+                setWatcherEnabled(next);
+                setMarketStatus(next ? 'Monitoring' : 'Paused');
+            };
+
+            const removeWatchedPair = (pair) => {
+                setWatchedPairs(prev => prev.filter(p => p !== pair));
+                setActiveAlerts(prev => prev.filter(a => a.pair !== pair));
+            };
+
+            const addWatchedPair = (pair) => {
+                if (!watchedPairs.includes(pair)) {
+                    setWatchedPairs(prev => [...prev, pair]);
+                    const randomStatus = Math.random() > 0.5 ? 'Approaching Demand Zone' : 'Entered Supply Zone';
+                    setActiveAlerts(prev => [
+                        ...prev,
+                        {
+                            id: 'aa-' + Date.now(),
+                            pair,
+                            status: randomStatus,
+                            distance: Math.floor(Math.random() * 6) + 4,
+                            maxDistance: 15,
+                            confidence: Math.floor(Math.random() * 15) + 80
+                        }
+                    ]);
+                }
+                setAddPairDropdownOpen(false);
+            };
+
+            const toggleNotificationSetting = (key) => {
+                setNotificationSettings(prev => ({ ...prev, [key]: !prev[key] }));
+            };
+
+            const markAllRead = () => {
+                setAlertHistory(prev => prev.map(h => ({ ...h, unread: false })));
+            };
+
+            const handleAddManualAlert = () => {
+                const pair = marketPairs[selectedPairIndex].pair;
+                const price = customPriceValue || marketPairs[selectedPairIndex].price.toString();
+                setAlertsList(prev => [
+                    ...prev,
+                    {
+                        id: 'm-' + Date.now(),
+                        pair,
+                        value: price,
+                        direction: alertDirection,
+                        triggered: false,
+                        channels: alertChannels,
+                        isMuted: false
+                    }
+                ]);
+                setCustomPriceValue('');
+            };
+
+            const handleAnalyzeChart = () => {
+                if (!uploadedImage) return;
+                setIsAnalyzing(true);
+                setAnalysisLogs([
+                    'Scanning chart layouts for structural nodes...',
+                    'Mapping Fibonacci quadrants against active strategies...',
+                    'Validating candle structure and pivot wicks...'
+                ]);
+                setTimeout(() => {
+                    setAnalysisLogs(prev => [...prev, 'Verification metrics calculated successfully. Rendering insights ✓']);
+                    setAnalysisReport({
+                        signal: Math.random() > 0.5 ? 'BUY' : 'SELL',
+                        level: (1.09 + Math.random() * 0.01).toFixed(4),
+                        tp: (1.1020).toFixed(4),
+                        sl: (1.0850).toFixed(4),
+                        confidence: '92%',
+                        reason: 'Strong liquidity sweep recognized at historical support boundaries alignment.'
+                    });
+                    setIsAnalyzing(false);
+                }, 2000);
+            };
+
+            const simulateTrigger = () => {
+                const samplePairs = ['EUR/USD', 'GBP/USD', 'XAU/USD', 'USD/JPY'];
+                const chosenPair = samplePairs[Math.floor(Math.random() * samplePairs.length)];
+                const alertsList = ['approaching demand zone', 'entered supply zone', 'bullish confirmation detected'];
+                const chosenAlert = alertsList[Math.floor(Math.random() * alertsList.length)];
+                setAlertHistory(prev => [
+                    {
+                        id: 'hs-' + Date.now(),
+                        pair: chosenPair,
+                        message: `🔔 ${chosenPair.replace('/', '')} ${chosenAlert}.`,
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        unread: true
+                    },
+                    ...prev
+                ]);
+            };
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen flex flex-col relative px-4 pt-6">
+                    {/* TOP BRAND HEADER */}
+                    <header className="flex justify-between items-center mb-6 pt-2 pb-4 border-b border-neutral-900">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-white text-black p-1 rounded font-bold font-mono text-sm tracking-tighter shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+                                GAKS
+                            </div>
+                            <span className="text-sm font-semibold tracking-wider font-mono">AI CLIENT WORKSPACE</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-neutral-950 border border-neutral-850 px-2 py-0.5 rounded text-[10px] font-mono text-neutral-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>SESSION LIVE</span>
+                        </div>
+                    </header>
+
+                    {/* MAIN CONTROLLER WRAPPER */}
+                    <main className="flex-1">
+                        
+                        {/* --- VIEW 1: MARKET PAGE --- */}
+                        {currentPage === 'market' && (
+                            <div className="space-y-4 animate-fadeIn">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-lg font-bold tracking-tight text-white mb-0">Assets Live Rates</h2>
+                                    <div className="flex items-center gap-1 text-[10px] font-mono text-neutral-500">
+                                        <i className="ph ph-shield-check text-emerald-500"></i>
+                                        <span>5s Auto Sync</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {marketPairs.map(p => {
+                                        const isUp = p.change >= 0;
+                                        const dynamicTP = isUp ? p.price * 1.011 : p.price * 0.989;
+                                        const dynamicSL = isUp ? p.price * 0.994 : p.price * 1.006;
+                                        return (
+                                            <div key={p.pair} className="bg-[#121212]/90 border border-neutral-900 rounded-xl p-4 flex flex-col space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <span className="font-bold text-white block text-sm font-mono">{p.pair}</span>
+                                                        <span className="text-[10px] text-neutral-500">{p.name}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-sm font-bold font-mono block text-white">{formatPrice(p.pair, p.price)}</span>
+                                                        <span className={`text-[10px] font-mono ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                            {isUp ? '▲' : '▼'} {isUp ? '+' : ''}{p.change}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-between items-center border-t border-neutral-900 pt-2.5 text-[10px] font-mono text-neutral-500">
+                                                    <div>
+                                                        <span className="text-emerald-500 font-bold mr-1">REC. TP:</span>
+                                                        <span className="text-neutral-300 font-semibold">{formatPrice(p.pair, dynamicTP)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-rose-500 font-bold mr-1">REC. SL:</span>
+                                                        <span className="text-neutral-300 font-semibold">{formatPrice(p.pair, dynamicSL)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- VIEW 2: STRATEGY ENGINE --- */}
+                        {currentPage === 'strategy' && (
+                            <div className="space-y-4 animate-fadeIn">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-lg font-bold tracking-tight text-white mb-0">Strategy Modules</h2>
+                                    <span className="text-[10px] font-mono text-neutral-500">Active Blueprint</span>
+                                </div>
+
+                                <div className="bg-[#121212] border border-neutral-900 rounded-xl p-4">
+                                    <label className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-2">Selected Heuristics Model</label>
+                                    <textarea 
+                                        className="w-full h-44 bg-neutral-950 border border-neutral-900 rounded-lg p-3 text-xs font-mono text-neutral-300 outline-none focus:border-neutral-700 resize-none leading-relaxed"
+                                        value={selectedStrategy}
+                                        onChange={(e) => setSelectedStrategy(e.target.value)}
+                                    />
+                                    <div className="flex gap-2 mt-4">
+                                        {STRATEGIES_LIST.map((strat, idx) => (
+                                            <button 
+                                                key={idx}
+                                                onClick={() => setSelectedStrategy(strat)}
+                                                className={`flex-1 py-1 px-2 border rounded-lg text-[9px] font-mono text-center transition-all ${selectedStrategy === strat ? 'bg-white text-black border-white' : 'bg-transparent text-neutral-500 border-neutral-850'}`}
+                                            >
+                                                MOD {idx + 1}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- VIEW 3: CHART ANALYZER --- */}
+                        {currentPage === 'analyze' && (
+                            <div className="space-y-4 animate-fadeIn">
+                                <h2 className="text-lg font-bold tracking-tight text-white mb-0">AI Liquidity Scanner</h2>
+                                
+                                <div className="bg-[#121212] border border-neutral-900 rounded-xl p-5 text-center">
+                                    {uploadedImage ? (
+                                        <div className="relative rounded-lg overflow-hidden border border-neutral-800">
+                                            <img src={uploadedImage} className="w-full max-h-[180px] object-cover h-auto" />
+                                            <button 
+                                                onClick={() => setUploadedImage(null)}
+                                                className="absolute top-2 right-2 bg-black/80 rounded-full h-6 w-6 flex items-center justify-center text-xs text-rose-500 cursor-pointer"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div 
+                                            onClick={() => {
+                                                // mock upload click trigger
+                                                setUploadedImage("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23121212'/><line x1='10' y1='80' x2='30' y2='60' stroke='white' stroke-width='2'/><line x1='30' y1='60' x2='50' y2='70' stroke='white' stroke-width='2'/><line x1='50' y1='70' x2='90' y2='20' stroke='white' stroke-width='2'/></svg>");
+                                            }}
+                                            className="border border-dashed border-neutral-800 rounded-xl py-10 px-4 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-900/40 transition-all"
+                                        >
+                                            <i className="ph ph-image-square text-3xl text-neutral-600 mb-2"></i>
+                                            <span className="text-xs text-neutral-400 block font-bold">Upload screenshot</span>
+                                            <span className="text-[10px] text-neutral-600 font-mono mt-1">Tap here to simulate chart file drop</span>
+                                        </div>
+                                    )}
+
+                                    <button 
+                                        onClick={handleAnalyzeChart}
+                                        disabled={!uploadedImage || isAnalyzing}
+                                        className={`w-full py-2.5 mt-4 text-xs font-bold rounded-lg transition-all ${
+                                            uploadedImage 
+                                              ? 'bg-white text-black hover:bg-neutral-200 cursor-pointer' 
+                                              : 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-950'
+                                        }`}
+                                    >
+                                        {isAnalyzing ? 'Heuristics Calculation In Progress...' : 'Run Scanner Analysis'}
+                                    </button>
+                                </div>
+
+                                {analysisLogs.length > 0 && (
+                                    <div className="bg-[#0b0b0b] border border-neutral-900 rounded-xl p-4 font-mono text-[10px] text-neutral-450 h-32 overflow-y-auto space-y-1">
+                                        {analysisLogs.map((log, i) => (
+                                            <div key={i} className="flex gap-2">
+                                                <span className="text-neutral-600">></span>
+                                                <span>{log}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {analysisReport && (
+                                    <div className="bg-[#121212] border border-neutral-800 rounded-xl p-4 space-y-3 animate-fadeIn">
+                                        <div className="flex justify-between items-center">
+                                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${analysisReport.signal === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                                AI Setup: {analysisReport.signal}
+                                            </span>
+                                            <span className="text-[10px] font-mono text-neutral-400">Confidence: {analysisReport.confidence}</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono">
+                                            <div className="bg-black/40 border border-neutral-850 p-2 rounded-lg">
+                                                <span className="text-neutral-500 block">ENTRY</span>
+                                                <span className="text-white font-bold">{analysisReport.level}</span>
+                                            </div>
+                                            <div className="bg-black/40 border border-neutral-850 p-2 rounded-lg">
+                                                <span className="text-emerald-500 block">TP ZONE</span>
+                                                <span className="text-white font-bold">{analysisReport.tp}</span>
+                                            </div>
+                                            <div className="bg-black/40 border border-neutral-850 p-2 rounded-lg">
+                                                <span className="text-rose-500 block">SL ZONE</span>
+                                                <span className="text-white font-bold">{analysisReport.sl}</span>
+                                            </div>
+                                        </div>
+                                        <p className="text-[11px] text-neutral-400 leading-relaxed font-sans mt-2">{analysisReport.reason}</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* --- VIEW 4: ALERTS PAGE --- */}
+                        {currentPage === 'alerts' && (
+                            <div className="space-y-5 animate-fadeIn">
+                                <div className="flex flex-col gap-10">
+                                    
+                                    {/* SECTION: AI MARKET WATCHER */}
+                                    <div className="bg-[#121212]/85 border border-neutral-900 rounded-2xl p-5 shadow-[0_4px_30px_rgba(0,0,0,0.6)] relative overflow-hidden">
+                                        {/* Premium subtle white glow in corner */}
+                                        <div className="absolute -top-12 -right-12 h-24 w-24 bg-white/5 rounded-full blur-2xl"></div>
+
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-bold">Heuristic Engine</span>
+                                                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-black border border-neutral-850 text-[9px] font-mono text-neutral-300">
+                                                    <span className={`h-1.5 w-1.5 rounded-full ${watcherEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-500'}`}></span>
+                                                    <span>{marketStatus}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between py-2 border-y border-neutral-900 mb-4">
+                                            <div>
+                                                <span className="block text-sm font-bold text-white">Enable AI Heuristics Watcher</span>
+                                                <span className="text-[11px] text-neutral-500">Autonomous support/resist scanner & setup builder</span>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer select-none">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="sr-only peer" 
+                                                    checked={watcherEnabled} 
+                                                    onChange={toggleWatcher}
+                                                />
+                                                <div className="w-11 h-6 bg-neutral-850 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-neutral-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"></div>
+                                            </label>
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-[11px] font-mono text-neutral-500">
+                                            <span className="text-neutral-300">Currently watching {watchedPairs.length} markets</span>
+                                            <span className="text-[10px] text-neutral-600">Latency: 3.8ms</span>
+                                        </div>
+                                    </div>
+
+                                    {/* SECTION: WATCHLIST */}
+                                    <div className="bg-[#121212]/85 border border-neutral-900 rounded-2xl p-5 shadow-[0_4px_30px_rgba(0,0,0,0.6)]">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-bold">Watchlist Status</span>
+                                            <span className="text-[10px] text-neutral-500 font-mono">Real-Time Core</span>
+                                        </div>
+
+                                        <div className="space-y-2.5 mb-4">
+                                            {watchedPairs.map(pair => {
+                                                const livePair = marketPairs.find(p => p.pair === pair);
+                                                const currentPrice = livePair ? livePair.price : 1.0924;
+                                                const changeVal = livePair ? livePair.change : 0.0;
+                                                const isUp = changeVal >= 0;
+
+                                                return (
+                                                    <div key={pair} className="flex justify-between items-center bg-black/40 border border-neutral-950 rounded-xl p-3.5 hover:border-neutral-850 transition-colors">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-bold font-mono text-white">{pair}</span>
+                                                                <span className="h-1 w-1 rounded-full bg-emerald-500"></span>
+                                                                <span className="text-[9px] font-mono text-neutral-500 font-bold tracking-wider">MONITORING</span>
+                                                            </div>
+                                                            <span className="text-[10px] font-mono text-neutral-500 block mt-0.5">Scanner active [H1/M15]</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="text-right">
+                                                                <span className="text-xs font-mono font-bold text-white block">
+                                                                    {formatPrice(pair, currentPrice)}
+                                                                </span>
+                                                                <span className={`text-[9px] font-mono block ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                    {isUp ? '▲' : '▼'} {isUp ? '+' : ''}{changeVal}%
+                                                                </span>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => removeWatchedPair(pair)}
+                                                                className="text-neutral-500 hover:text-rose-500 p-1 rounded hover:bg-neutral-900 transition-all cursor-pointer border-none bg-transparent"
+                                                            >
+                                                                <i className="ph ph-trash text-sm"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {watchedPairs.length === 0 && (
+                                                <div className="text-center py-6 text-xs text-neutral-600 font-mono border border-dashed border-neutral-850 rounded-xl">
+                                                    No pairs currently under scanner
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Dropdown element to add pairs */}
+                                        <div className="relative">
+                                            <button 
+                                                onClick={() => setAddPairDropdownOpen(!addPairDropdownOpen)}
+                                                className="w-full py-2.5 bg-neutral-950 border border-neutral-850 hover:bg-neutral-900 text-neutral-200 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                                            >
+                                                <i className="ph ph-plus"></i> Add Monitored Pair
+                                            </button>
+
+                                            {addPairDropdownOpen && (
+                                                <div className="absolute left-0 right-0 mt-2 bg-[#161616] border border-neutral-800 rounded-xl shadow-2xl z-50 p-2 overflow-hidden animate-fadeIn">
+                                                    <div className="text-[9px] font-mono tracking-wider text-neutral-500 p-2 uppercase border-b border-neutral-900">
+                                                        Select Available Market Assets
+                                                    </div>
+                                                    <div className="max-h-[140px] overflow-y-auto mt-1">
+                                                        {marketPairs
+                                                            .filter(p => !watchedPairs.includes(p.pair))
+                                                            .map(p => (
+                                                                <div 
+                                                                    key={p.pair} 
+                                                                    onClick={() => addWatchedPair(p.pair)}
+                                                                    className="px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-900 hover:text-white rounded-lg cursor-pointer flex justify-between items-center transition-colors font-mono"
+                                                                >
+                                                                    <span>{p.pair}</span>
+                                                                    <span className="text-neutral-500 text-[10px]">{formatPrice(p.pair, p.price)}</span>
+                                                                </div>
+                                                            ))}
+                                                        {marketPairs.filter(p => !watchedPairs.includes(p.pair)).length === 0 && (
+                                                            <div className="text-center text-xs text-neutral-600 py-3 font-mono">
+                                                                All items added
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* SECTION: ALERT SETTINGS */}
+                                    <div className="bg-[#121212]/85 border border-neutral-900 rounded-2xl p-5 shadow-[0_4px_30px_rgba(0,0,0,0.6)]">
+                                        <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-bold block mb-4">Target Alert Criteria</span>
+                                        
+                                        <div className="grid grid-cols-2 gap-3 mb-4">
+                                            <div>
+                                                <label className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-1.5">Alert Trigger Distance</label>
+                                                <select 
+                                                    value={alertDistance} 
+                                                    onChange={(e) => setAlertDistance(e.target.value)}
+                                                    className="w-full bg-black border border-neutral-850 rounded-lg py-2 px-2.5 text-xs text-neutral-300 outline-none focus:border-neutral-600 font-mono cursor-pointer"
+                                                >
+                                                    <option value="5 pips away">5 pips away</option>
+                                                    <option value="10 pips away">10 pips away</option>
+                                                    <option value="15 pips away">15 pips away</option>
+                                                    <option value="20 pips away">20 pips away</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-1.5">Scanner Timeframe</label>
+                                                <select 
+                                                    value={timeframeSetting} 
+                                                    onChange={(e) => setTimeframeSetting(e.target.value)}
+                                                    className="w-full bg-black border border-neutral-850 rounded-lg py-2 px-2.5 text-xs text-neutral-300 outline-none focus:border-neutral-600 font-mono cursor-pointer"
+                                                >
+                                                    <option value="M5">M5</option>
+                                                    <option value="M15">M15</option>
+                                                    <option value="H1">H1</option>
+                                                    <option value="H4">H4</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-neutral-905 pt-4 space-y-2.5">
+                                            <span className="block text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-2">Notification Conditions</span>
+                                            
+                                            {[
+                                                { key: 'approachingZone', label: 'Approaching Zone Alert' },
+                                                { key: 'zoneReached', label: 'Zone Reached Alert' },
+                                                { key: 'confirmationDetected', label: 'Confirmation Alert' },
+                                                { key: 'tradeSetup', label: 'Trade Setup Alert' },
+                                                { key: 'setupInvalidated', label: 'Setup Invalidated Alert' }
+                                            ].map(item => (
+                                                <label key={item.key} className="flex items-center gap-3 cursor-pointer select-none">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={notificationSettings[item.key]} 
+                                                        onChange={() => toggleNotificationSetting(item.key)}
+                                                        className="sr-only peer"
+                                                    />
+                                                    <div className="h-4.5 w-4.5 bg-black border border-neutral-850 rounded-md flex items-center justify-center text-[10px] text-black peer-checked:bg-white peer-checked:border-white transition-all font-bold">
+                                                        {notificationSettings[item.key] && "✓"}
+                                                    </div>
+                                                    <span className="text-xs text-neutral-300 peer-checked:text-white transition-colors">{item.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* SECTION: ACTIVE ALERTS */}
+                                    <div className="bg-[#121212]/85 border border-neutral-900 rounded-2xl p-5 shadow-[0_4px_30px_rgba(0,0,0,0.6)]">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-bold">Live Scan Dashboard</span>
+                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        </div>
+
+                                        <div className="space-y-3.5">
+                                            {activeAlerts.map(alert => {
+                                                const progressPercent = Math.max(0, Math.min(100, Math.round(((alert.maxDistance - alert.distance) / alert.maxDistance) * 100)));
+                                                return (
+                                                    <div key={alert.id} className="bg-black/40 border border-neutral-950 rounded-xl p-4 space-y-3 relative overflow-hidden group">
+                                                        {/* Animated overlay gradient scanner row */}
+                                                        <div className="absolute top-0 left-0 w-0.5 h-full bg-white shadow-[0_0_12px_#fff] group-hover:w-full transition-all duration-[6000ms] opacity-5"></div>
+
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <span className="text-xs font-bold font-mono text-white block">{alert.pair}</span>
+                                                                <span className="text-[11px] font-medium text-neutral-200 mt-0.5 block">{alert.status}</span>
+                                                            </div>
+                                                            <div className="text-right font-mono">
+                                                                <span className="text-xs font-bold text-neutral-300 block">{alert.distance} PIPs REM}</span>
+                                                                <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider">{alert.confidence}% CONFIDENCE LEVEL</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Progress bar showing remaining distance */}
+                                                        <div className="space-y-1">
+                                                            <div className="w-full bg-neutral-950 border border-neutral-850 rounded-full h-2 overflow-hidden p-[1px]">
+                                                                <div 
+                                                                    className="h-full bg-white rounded-full transition-all duration-1000 shadow-[0_0_6px_#fff]"
+                                                                    style={{ width: `${progressPercent}%` }}
+                                                                ></div>
+                                                            </div>
+                                                            <div className="flex justify-between text-[9px] font-mono text-neutral-600">
+                                                                <span>ZONE BOUNDARY</span>
+                                                                <span>ARRIVING</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {activeAlerts.length === 0 && (
+                                                <div className="text-center py-10 font-mono text-xs text-neutral-600 border border-dashed border-neutral-850 rounded-xl">
+                                                    No active setups inside threshold criteria. Added pairs will scan dynamically.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* SECTION: ALERT HISTORY */}
+                                    <div className="bg-[#121212]/85 border border-neutral-900 rounded-2xl p-5 shadow-[0_4px_30px_rgba(0,0,0,0.6)]">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-bold">Recent Scanner Alerts</span>
+                                            {notificationCount > 0 ? (
+                                                <button 
+                                                    onClick={markAllRead}
+                                                    className="text-[10px] font-mono text-neutral-400 hover:text-white underline cursor-pointer bg-transparent border-none p-0"
+                                                >
+                                                    Acknowledge ({notificationCount})
+                                                </button>
+                                            ) : (
+                                                <span className="text-[10px] font-mono text-neutral-600">All read</span>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-2 max-h-[220px] overflow-y-auto mb-3.5 pr-1">
+                                            {alertHistory.map(hist => (
+                                                <div 
+                                                    key={hist.id} 
+                                                    className={`relative border rounded-xl p-3.5 flex items-start gap-3 transition-opacity ${
+                                                        hist.unread 
+                                                          ? 'bg-neutral-950 border-neutral-800 shadow-[0_0_10px_rgba(255,255,255,0.02)]' 
+                                                          : 'bg-black/30 border-neutral-950 opacity-50'
+                                                    }`}
+                                                >
+                                                    <div className="mt-0.5">
+                                                        <i className={`ph ph-bell text-sm ${hist.unread ? 'text-white font-bold' : 'text-neutral-500'}`}></i>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-[10px] font-bold font-mono text-white tracking-wide">{hist.pair}</span>
+                                                            <span className="text-[9px] font-mono text-neutral-500">{hist.timestamp}</span>
+                                                        </div>
+                                                        <p className="text-xs text-neutral-300 leading-snug m-0">{hist.message}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={simulateTrigger}
+                                                className="w-full py-2 border border-dashed border-neutral-800 hover:border-neutral-500 bg-neutral-950 font-mono text-[10px] text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                            >
+                                                + Simulate Live Alert Trigger Event
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* SECTION: MANUAL ALERTS OVERLAY */}
+                                    <div className="bg-[#121212]/85 border border-neutral-900 rounded-2xl p-5 shadow-[0_4px_30px_rgba(0,0,0,0.6)]">
+                                        <span className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 font-bold block mb-4">Manual Custom Target Level Alerts</span>
+                                        
+                                        <div className="bg-black/40 border border-neutral-950 rounded-xl p-4 mb-4">
+                                            <div className="relative">
+                                                <button className="w-full text-left bg-black border border-neutral-850 p-2.5 rounded-lg text-xs font-mono text-white mb-3 flex justify-between items-center cursor-pointer" onClick={() => setPairDropdownOpen(!pairDropdownOpen)}>
+                                                    <span>{marketPairs[selectedPairIndex].pair} — {formatPrice(marketPairs[selectedPairIndex].pair, marketPairs[selectedPairIndex].price)}</span>
+                                                    <i className="ph ph-caret-down"></i>
+                                                </button>
+                                                
+                                                {pairDropdownOpen && (
+                                                    <div className="absolute top-11 left-0 right-0 bg-[#1e1e1e] border border-neutral-800 rounded-lg shadow-xl overflow-hidden z-50 font-mono text-xs">
+                                                        {marketPairs.map((p, index) => (
+                                                            <div 
+                                                                key={p.pair} 
+                                                                className="px-3 py-2.5 hover:bg-neutral-800 cursor-pointer transition-colors flex justify-between items-center text-neutral-300"
+                                                                onClick={() => {
+                                                                    setSelectedPairIndex(index);
+                                                                    setPairDropdownOpen(false);
+                                                                }}
+                                                            >
+                                                                <span>{p.pair}</span>
+                                                                <span>{formatPrice(p.pair, p.price)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex gap-2 mb-3">
+                                                <button 
+                                                    className={`flex-1 py-1 px-3 border rounded text-[10px] font-mono text-center cursor-pointer transition-colors ${alertDirection === 'above' ? 'bg-white text-black border-white font-bold' : 'bg-transparent text-neutral-400 border-neutral-850'}`}
+                                                    onClick={() => setAlertDirection('above')}
+                                                >
+                                                    ↑ Above Trigger
+                                                </button>
+                                                <button 
+                                                    className={`flex-1 py-1 px-3 border rounded text-[10px] font-mono text-center cursor-pointer transition-colors ${alertDirection === 'below' ? 'bg-white text-black border-white font-bold' : 'bg-transparent text-neutral-400 border-neutral-850'}`}
+                                                    onClick={() => setAlertDirection('below')}
+                                                >
+                                                    ↓ Below Trigger
+                                                </button>
+                                            </div>
+
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    type="number" 
+                                                    step="0.0001"
+                                                    className="bg-black border border-neutral-850 p-2 text-xs text-white rounded-lg font-mono flex-1 outline-none" 
+                                                    value={customPriceValue}
+                                                    onChange={(e) => setCustomPriceValue(e.target.value)}
+                                                    placeholder={`Current: ${formatPrice(marketPairs[selectedPairIndex].pair, marketPairs[selectedPairIndex].price)}`}
+                                                />
+                                                <button className="px-4 bg-neutral-200 hover:bg-white text-black font-bold text-xs rounded-lg transition-colors cursor-pointer border-none" onClick={handleAddManualAlert}>
+                                                    Set Level
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {alertsList.map(al => (
+                                                <div key={al.id} className="border border-neutral-900 bg-black/40 rounded-xl p-3 flex justify-between items-center">
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-bold text-white font-mono">{al.pair}</span>
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-neutral-900 border border-neutral-850 text-neutral-450 uppercase">
+                                                                MONITORING
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-[11px] font-mono text-neutral-400">{al.direction === 'above' ? '↑ ABOVE' : '↓ BELOW'} {al.value}</span>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => setAlertsList(prev => prev.filter(c => c.id !== al.id))}
+                                                        className="text-neutral-500 hover:text-rose-500 cursor-pointer p-1 bg-transparent border-none"
+                                                    >
+                                                        <i className="ph ph-trash text-sm"></i>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        )}
+
+                    </main>
+
+                    {/* BOTTOM DOCK NAVIGATION (STANDARD GLOW DESIGN) */}
+                    <nav className="fixed bottom-0 left-0 right-0 bg-[#070707] border-t border-neutral-900 flex justify-around py-3 px-2 z-50">
+                        <div 
+                            className={`flex-1 flex flex-col items-center gap-1 cursor-pointer transition-colors ${currentPage === 'market' ? 'text-white' : 'text-neutral-500'}`}
+                            onClick={() => setCurrentPage('market')}
+                        >
+                            <i className="ph ph-chart-line text-lg"></i>
+                            <span className="text-[10px] tracking-wide font-mono">Rates</span>
+                        </div>
+                        <div 
+                            className={`flex-1 flex flex-col items-center gap-1 cursor-pointer transition-colors ${currentPage === 'strategy' ? 'text-white' : 'text-neutral-500'}`}
+                            onClick={() => setCurrentPage('strategy')}
+                        >
+                            <i className="ph ph-shield-check text-lg"></i>
+                            <span className="text-[10px] tracking-wide font-mono">Strategy</span>
+                        </div>
+                        <div 
+                            className={`flex-1 flex flex-col items-center gap-1 cursor-pointer transition-colors ${currentPage === 'analyze' ? 'text-white' : 'text-neutral-500'}`}
+                            onClick={() => setCurrentPage('analyze')}
+                        >
+                            <i className="ph ph-sparkle text-lg"></i>
+                            <span className="text-[10px] tracking-wide font-mono">Scan AI</span>
+                        </div>
+                        <div 
+                            className={`flex-1 flex flex-col items-center gap-1 cursor-pointer relative transition-colors ${currentPage === 'alerts' ? 'text-white' : 'text-neutral-500'}`}
+                            onClick={() => setCurrentPage('alerts')}
+                        >
+                            <div className="relative">
+                                <i className="ph ph-bell text-lg"></i>
+                                {notificationCount > 0 && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-white text-black font-mono font-bold text-[8px] h-3.5 w-3.5 flex items-center justify-center rounded-full border border-neutral-950 animate-pulse shadow-[0_0_8px_#fff]">
+                                        {notificationCount}
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-[10px] tracking-wide font-mono">Alerts</span>
+                        </div>
+                    </nav>
+
+                </div>
+            );
+        }
+
+        const rootElement = document.getElementById('root');
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(<App />);
+    </script>
+</body>
+</html>
