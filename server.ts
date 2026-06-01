@@ -18,6 +18,51 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Secure proxy for Supabase Edge Functions to bypass iframe sandbox/CORS blocks
+  app.post("/api/supabase-proxy", async (req, res) => {
+    const { url, headers, body } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: "Missing destination URL." });
+    }
+
+    try {
+      console.log(`[Proxy] Forwarding request to Supabase Cloud: ${url}`);
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const responseText = await response.text();
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
+      }
+
+      if (!response.ok) {
+        console.error(`[Proxy Upstream Error] Status ${response.status}:`, responseData);
+        return res.status(response.status).json({
+          error: "Supabase Proxy Upstream Rejection",
+          details: responseData,
+        });
+      }
+
+      return res.json(responseData);
+    } catch (error: any) {
+      console.error("[Proxy Exception]:", error);
+      return res.status(500).json({
+        error: "Supabase Proxy Server Exception",
+        details: error.message || "An unhandled exception occurred during proxy execution."
+      });
+    }
+  });
+
   // Simulator endpoint for Supabase Edge Function testing
   app.post("/api/test-supabase-edge-gemini", async (req, res) => {
     const { prompt, model = "gemini-2.5-flash", temperature = 0.7, systemInstruction } = req.body;

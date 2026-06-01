@@ -440,16 +440,21 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
         "Transmitting prompt context in background stream..."
       ]);
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`, {
+      const response = await fetch("/api/supabase-proxy", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-          "apikey": SUPABASE_ANON_KEY
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          prompt: compositePrompt,
-          temperature: 0.4
+          url: `${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`,
+          headers: {
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "apikey": SUPABASE_ANON_KEY
+          },
+          body: {
+            prompt: compositePrompt,
+            temperature: 0.4
+          }
         }),
         signal: controller.signal
       });
