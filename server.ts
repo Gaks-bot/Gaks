@@ -275,6 +275,95 @@ async function startServer() {
     }
   });
 
+  // Endpoint to auto-detect symbol and timeframe from an uploaded chart screenshot
+  app.post("/api/detect-symbol-timeframe", async (req, res) => {
+    const { image } = req.body;
+
+    if (!image) {
+      return res.status(400).json({ error: "Missing image payload." });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
+      return res.status(400).json({
+        error: "GEMINI_API_KEY is not configured. Please add your Gemini API Key in AI Studio > Settings > Secrets panel."
+      });
+    }
+
+    try {
+      const match = image.match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) {
+        return res.status(400).json({ error: "Invalid image format received." });
+      }
+
+      const mimeType = match[1];
+      const base64Data = match[2];
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data
+              }
+            },
+            {
+              text: `Analyze this chart screenshot and identify:
+1. The asset symbol / ticker / currency pair (e.g. "EURUSD", "BTCUSD", "AAPL", "XAUUSD", "GBPUSD", "ETHUSD"). Look at the titles, headers, watermarks or axis. Return clean upper-case letters without slashes if possible (e.g., "EURUSD" instead of "EUR/USD", "BTCUSD" instead of "BTC/USD").
+2. The current active timeframe of the chart (e.g., "5m", "15m", "1h", "4h", "1d", "D"). Look for indicators, headers or timeframe select boxes highlighted on the screen.
+3. A short confidence statement explaining how confident you are in this detection.
+
+Return your findings in the requested JSON structure.`
+            }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              symbol: {
+                type: Type.STRING,
+                description: "Recognized clean security symbol/ticker (e.g., 'EURUSD', 'BTCUSD', 'XAUUSD', 'AAPL'). Avoid slash characters. Default is 'EURUSD'."
+              },
+              timeframe: {
+                type: Type.STRING,
+                description: "Recognized timeframe of this screenshot (e.g., '15m', '1H', '4H', 'D'). Default is '1H'."
+              },
+              confidence: {
+                type: Type.STRING,
+                description: "A short text explaining detection confidence or key markers identified."
+              }
+            },
+            required: ["symbol", "timeframe", "confidence"]
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response.text || "{}");
+      return res.json(parsed);
+
+    } catch (error: any) {
+      console.error("Detect Symbol/Timeframe Error:", error);
+      return res.json({
+        symbol: "EURUSD",
+        timeframe: "1H",
+        confidence: "Fallback activated due to system processing error. Defaulting to EURUSD 1H."
+      });
+    }
+  });
+
   // Secure Server-side Gemini AI analysis route using @google/genai
   app.post("/api/analyze-chart", async (req, res) => {
     const { image, strategy } = req.body;

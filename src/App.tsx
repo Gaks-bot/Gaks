@@ -322,6 +322,106 @@ export default function App() {
   });
   const [historyModalOpen, setHistoryModalOpen] = useState<boolean>(false);
 
+  // Bigger Picture Analysis states
+  const [detectedSymbol, setDetectedSymbol] = useState<string>("EURUSD");
+  const [detectedTimeframe, setDetectedTimeframe] = useState<string>("1H");
+  const [isDetectingSymbol, setIsDetectingSymbol] = useState<boolean>(false);
+  const [detectionConfidence, setDetectionConfidence] = useState<string | null>(null);
+  const [isBiggerPictureMode, setIsBiggerPictureMode] = useState<boolean>(true);
+
+  // Auto-detect Symbol and Timeframe from a chart screenshot
+  const detectSymbolAndTimeframe = async (base64Image: string) => {
+    setIsDetectingSymbol(true);
+    setDetectionConfidence(null);
+    try {
+      const response = await fetch("/api/detect-symbol-timeframe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64Image })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.symbol) {
+          // Normalize symbol (remove slashes, dashes, spaces)
+          const cleanSymbol = data.symbol.replace(/[\/\s-]/g, "").toUpperCase();
+          setDetectedSymbol(cleanSymbol);
+        }
+        if (data.timeframe) {
+          setDetectedTimeframe(data.timeframe);
+        }
+        if (data.confidence) {
+          setDetectionConfidence(data.confidence);
+        }
+      }
+    } catch (err) {
+      console.warn("Symbol and timeframe detection failed:", err);
+    } finally {
+      setIsDetectingSymbol(false);
+    }
+  };
+
+  // Helper to map recognized tickers to standard TradingView feeds
+  const getTradingViewTicker = (symbolStr: string): string => {
+    const sym = symbolStr.toUpperCase().replace(/[\/\s-]/g, "");
+    if (!sym) return "FX_IDC:EURUSD";
+    
+    // Major Forex
+    if (sym.includes("EURUSD") || sym.includes("GBPUSD") || sym.includes("USDJPY") || sym.includes("USDCHF") || sym.includes("AUDUSD") || sym.includes("USDCAD") || sym.includes("EURGBP") || sym.includes("GBPJPY") || sym.includes("NZDUSD")) {
+      return `OANDA:${sym}`;
+    }
+    // Cryptocurrencies
+    if (sym.includes("BTC") || sym.includes("ETH") || sym.includes("SOL")) {
+      if (sym.includes("USDT") || sym.includes("USD")) {
+        const cryptoBase = sym.replace("USD", "").replace("USDT", "");
+        return `COINBASE:${cryptoBase}USD`;
+      }
+      return `BINANCE:${sym}USDT`;
+    }
+    // Precious Metals
+    if (sym.includes("XAU") || sym.includes("GOLD")) {
+      return "OANDA:XAUUSD";
+    }
+    if (sym.includes("XAG") || sym.includes("SILVER")) {
+      return "OANDA:XAGUSD";
+    }
+    // Indices
+    if (sym.includes("SPX") || sym.includes("SP500") || sym.includes("S&P")) {
+      return "CBOE:SPX";
+    }
+    if (sym.includes("NDX") || sym.includes("NAS")) {
+      return "NASDAQ:IXIC";
+    }
+    
+    // Classic Stocks
+    const isLikelyStock = ["AAPL", "MSFT", "GOOG", "TSLA", "NVDA", "META", "AMZN", "NFLX"].includes(sym);
+    if (isLikelyStock) {
+      return `NASDAQ:${sym}`;
+    }
+    return sym;
+  };
+
+  // Helper to determine higher timeframe interval for TradingView embeds
+  const getHigherTimeframeDetails = (currentTimeframe: string): { label: string; interval: string } => {
+    const tf = currentTimeframe.toUpperCase().replace(/\s/g, "");
+    
+    if (tf.includes("1M") || tf.includes("3M") || tf.includes("5M") || tf === "5") {
+      return { label: "1 Hour (H1 Core Context)", interval: "60" };
+    }
+    if (tf.includes("15M") || tf === "15" || tf.includes("30M") || tf === "30") {
+      return { label: "4 Hour (H4 Multi-Timeframe)", interval: "240" };
+    }
+    if (tf.includes("1H") || tf === "60" || tf === "1H" || tf.includes("2H")) {
+      return { label: "Daily (D1 Macro Trend)", interval: "D" };
+    }
+    if (tf.includes("4H") || tf === "240" || tf === "4H") {
+      return { label: "Daily (D1 Macro Trend)", interval: "D" };
+    }
+    if (tf.includes("D") || tf === "D" || tf.includes("1D")) {
+      return { label: "Weekly (W1 Structural Context)", interval: "W" };
+    }
+    return { label: "Daily (D1 Macro Trend)", interval: "D" };
+  };
+
   // Helper storage engine to cache reports
   const saveToHistory = (image: string, strategy: string, report: AnalysisReport) => {
     const item: AnalysisHistoryItem = {
@@ -364,9 +464,12 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
-        setUploadedImage(e.target.result as string);
+        const base64Str = e.target.result as string;
+        setUploadedImage(base64Str);
         setAnalysisReport(null);
         setAnalysisLogs([]);
+        // Auto-detect symbol & timeframe from the screenshot
+        detectSymbolAndTimeframe(base64Str);
       }
     };
     reader.readAsDataURL(file);
@@ -395,6 +498,9 @@ export default function App() {
     setUploadedImage(null);
     setAnalysisReport(null);
     setAnalysisLogs([]);
+    setDetectedSymbol("EURUSD");
+    setDetectedTimeframe("1H");
+    setDetectionConfidence(null);
   };
 
   // Perform Gemini analysis on uploaded charts via Supabase Edge Function
@@ -411,15 +517,22 @@ export default function App() {
 
     try {
       // Craft a comprehensive query prompt summarizing our requirements and supplying our data
-      const compositePrompt = `You are a professional financial market strategist.
+      let compositePrompt = `You are a professional financial market strategist.
 Please analyze the following trading strategy:
 ---
 ${selectedStrategy}
 ---
 
-And the active chart details parsed from the visual data (if present).
+And the active chart details parsed from the visual data.`;
 
-Analyze this situation and return a cohesive and structured recommendation in strict, valid JSON format.
+      if (isBiggerPictureMode) {
+        compositePrompt += `\n\n[Multi-Timeframe Context - Bigger Picture Mode Active]:
+- The user has uploaded a local chart screenshot of ${detectedSymbol} on the ${detectedTimeframe} timeframe.
+- The interactive live TradingView chart has been cross-referenced at the higher ${getHigherTimeframeDetails(detectedTimeframe).label} timeframe level to evaluate the larger macro market trend and key structural supply & demand points.
+- Core Action: Analyze the local candlestick patterns, support/resistance structure, or indicator values from the uploaded screenshot. Then combine this with the broader market trend, support zones, and liquidity structures characteristic of the higher ${getHigherTimeframeDetails(detectedTimeframe).label} timeframe. Your final decision must incorporate multi-timeframe confirmation (e.g. check if the local entry is aligned with the major HTF trend).`;
+      }
+
+      compositePrompt += `\n\nAnalyze this situation and return a cohesive and structured recommendation in strict, valid JSON format.
 Your output must contain exactly this structure with keys "signal", "level", "tp", "sl", "confidence", and "reason":
 {
   "signal": "BUY" or "SELL" or "HOLD",
@@ -427,7 +540,7 @@ Your output must contain exactly this structure with keys "signal", "level", "tp
   "tp": "recommended take profit, e.g. 1.1880",
   "sl": "recommended stop loss, e.g. 1.1690",
   "confidence": "estimated confidence, e.g. 88%",
-  "reason": "Detailed bullet-point reasoning for this decision matching the input strategy rules"
+  "reason": "Detailed bullet-point reasoning for this decision matching the input strategy rules, specifically detailing both the local screenshot patterns and the high-timeframe confirmation findings."
 }
 
 Provide ONLY raw, parseable JSON back without wrapping inside any markdown markdown tags (\`\`\`), code fencing or prefixing with 'json'. Just return the exact JSON block.`;
@@ -440,24 +553,60 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
         "Transmitting prompt context in background stream..."
       ]);
 
-      const response = await fetch("/api/supabase-proxy", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          url: `${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`,
+      let response: Response;
+      let isFallbackToDirect = false;
+
+      try {
+        response = await fetch("/api/supabase-proxy", {
+          method: "POST",
           headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            url: `${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`,
+            headers: {
+              "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+              "apikey": SUPABASE_ANON_KEY
+            },
+            body: {
+              prompt: compositePrompt,
+              temperature: 0.4
+            }
+          }),
+          signal: controller.signal
+        });
+
+        // Intercept html redirects or bad response codes to retry with direct client query
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || contentType.includes("text/html")) {
+          isFallbackToDirect = true;
+        }
+      } catch (proxyError) {
+        console.warn("[Express Proxy Unreachable] Triggering direct client route fallback...", proxyError);
+        isFallbackToDirect = true;
+      }
+
+      if (isFallbackToDirect) {
+        setAnalysisLogs((prev) => [
+          ...prev,
+          "Redirecting connection: Serverless proxy bypassed.",
+          "Securing direct pipeline with Supabase Cloud execution grid..."
+        ]);
+
+        response = await fetch(`${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
             "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
             "apikey": SUPABASE_ANON_KEY
           },
-          body: {
+          body: JSON.stringify({
             prompt: compositePrompt,
             temperature: 0.4
-          }
-        }),
-        signal: controller.signal
-      });
+          }),
+          signal: controller.signal
+        });
+      }
 
       clearTimeout(timeoutId);
 
@@ -1033,49 +1182,166 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
             </span>
           </div>
 
-          <div
-            className={`upload-area ${isDragging ? "dragging" : ""}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={handleUploadAreaClick}
-          >
-            <input
-              type="file"
-              ref={imageInputRef}
-              style={{ display: "none" }}
-              accept="image/*"
-              onChange={handleFileChange}
-            />
+          <input
+            type="file"
+            ref={imageInputRef}
+            style={{ display: "none" }}
+            accept="image/*"
+            onChange={handleFileChange}
+          />
 
-            {uploadedImage ? (
-              <div className="w-full h-full relative flex items-center justify-center p-2">
-                <img
-                  src={uploadedImage}
-                  alt="Uploaded chart screenshot"
-                  className="max-h-full max-w-full rounded-lg object-contain"
-                  referrerPolicy="no-referrer"
-                />
-                <button
-                  className="absolute top-3 right-3 bg-black/80 hover:bg-black text-rose-500 rounded-full p-2 h-9 w-9 flex items-center justify-center border border-neutral-800 transition-colors cursor-pointer"
-                  onClick={handleRemoveImage}
-                  title="Remove image"
-                >
-                  <i className="ph ph-trash" style={{ fontSize: "1.2rem" }} />
-                </button>
+          {!uploadedImage ? (
+            <div
+              className={`upload-area ${isDragging ? "dragging" : ""}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={handleUploadAreaClick}
+            >
+              <div className="icon-box">
+                <i className="ph ph-upload-simple" style={{ fontSize: "2.2rem", color: "#888" }} />
               </div>
-            ) : (
-              <>
-                <div className="icon-box">
-                  <i className="ph ph-upload-simple" style={{ fontSize: "2.2rem", color: "#888" }} />
+              <p style={{ margin: "5px 0", fontWeight: "500" }}>Upload Chart Screenshot</p>
+              <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                PNG, JPG or WebP · Max 10MB
+              </span>
+            </div>
+          ) : (
+            <>
+              {/* Main Workspace: Screenshot and TradingView side-by-side / stacked responsive */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {/* Left Column: Uploaded Screenshot card */}
+                <div className="card p-4 border border-neutral-800 rounded-xl bg-[#0d0d0d] flex flex-col h-[340px] relative">
+                  <div className="flex justify-between items-center mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300 font-sans">
+                        Uploaded Screenshot
+                      </span>
+                    </div>
+                    <button
+                      className="text-neutral-500 hover:text-rose-500 transition-colors p-1"
+                      onClick={handleRemoveImage}
+                      title="Remove Image"
+                    >
+                      <i className="ph ph-trash text-sm" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-hidden relative flex items-center justify-center bg-neutral-950/40 rounded-lg border border-neutral-800/80">
+                    <img
+                      src={uploadedImage}
+                      alt="Uploaded chart screenshot"
+                      className="max-h-full max-w-full rounded-md object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
                 </div>
-                <p style={{ margin: "5px 0", fontWeight: "500" }}>Upload Chart Screenshot</p>
-                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                  PNG, JPG or WebP · Max 10MB
-                </span>
-              </>
-            )}
-          </div>
+
+                {/* Right Column: Interactive TradingView Chart (Bigger Picture Context) */}
+                <div className="card p-4 border border-neutral-800 rounded-xl bg-[#0d0d0d] flex flex-col h-[340px] relative">
+                  <div className="flex justify-between items-center mb-2.5">
+                    <div className="flex items-center gap-2 font-sans">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
+                        TradingView Bigger Picture
+                      </span>
+                      {isDetectingSymbol ? (
+                        <span className="text-[10px] text-amber-500 font-mono animate-pulse">
+                          Scanning...
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold uppercase">
+                          {getHigherTimeframeDetails(detectedTimeframe).label}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-hidden rounded-lg border border-neutral-800/80 bg-neutral-950 relative">
+                    {isDetectingSymbol ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-4 space-y-3">
+                        <svg className="animate-spin h-6 w-6 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <div className="text-center space-y-1">
+                          <p className="text-xs font-mono text-neutral-300">Analyzing screenshot wicks & candles...</p>
+                          <p className="text-[10px] text-neutral-500 font-mono">Deducing Symbol and Base Timeframe</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <iframe
+                        id="tradingview_chart_iframe"
+                        title="TradingView Chart Context"
+                        src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(getTradingViewTicker(detectedSymbol))}&interval=${getHigherTimeframeDetails(detectedTimeframe).interval}&theme=dark&style=1&timezone=Etc%2FUTC`}
+                        style={{ width: "100%", height: "100%", border: "none" }}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Overrides and custom mode selections */}
+              {!isDetectingSymbol && (
+                <div className="card p-3 border border-neutral-800/80 rounded-xl bg-[#0b0b0b] mb-4 flex flex-col gap-2">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-neutral-500 font-mono">DETECTED TICKER</span>
+                        <input
+                          type="text"
+                          value={detectedSymbol}
+                          onChange={(e) => setDetectedSymbol(e.target.value.toUpperCase())}
+                          className="bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-2.5 py-1.5 rounded-lg w-28 uppercase font-mono mt-0.5 focus:border-amber-500 outline-none"
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-neutral-500 font-mono">TIMEFRAME</span>
+                        <select
+                          value={detectedTimeframe}
+                          onChange={(e) => setDetectedTimeframe(e.target.value)}
+                          className="bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-2.5 py-1.5 rounded-lg w-28 font-mono mt-0.5 focus:border-amber-500 outline-none"
+                        >
+                          <option value="5m">5 Minute</option>
+                          <option value="15m">15 Minute</option>
+                          <option value="1H">1 Hour</option>
+                          <option value="4H">4 Hour</option>
+                          <option value="D">Daily</option>
+                          <option value="W">Weekly</option>
+                        </select>
+                      </div>
+                      {detectionConfidence && (
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-neutral-500 font-mono">DETECTION STATUS</span>
+                          <span className="text-[11px] text-amber-500/90 font-mono mt-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/10 max-w-[280px] truncate" title={detectionConfidence}>
+                            {detectionConfidence}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 md:self-end pt-1 md:pt-0">
+                      <span className="text-xs text-neutral-400 font-semibold select-none font-sans">
+                        Bigger Picture Context Feature
+                      </span>
+                      <button
+                        onClick={() => setIsBiggerPictureMode(!isBiggerPictureMode)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          isBiggerPictureMode ? "bg-emerald-600" : "bg-neutral-800"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            isBiggerPictureMode ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
           {(isAnalyzing || analysisLogs.length > 0) && (
             <div className="card p-4 rounded-xl border border-neutral-800 font-mono text-xs text-neutral-400 space-y-1 bg-[#0b0b0b] max-h-[140px] overflow-y-auto mb-[15px]">
