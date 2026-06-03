@@ -329,7 +329,81 @@ export default function App() {
   const [detectionConfidence, setDetectionConfidence] = useState<string | null>(null);
   const [isBiggerPictureMode, setIsBiggerPictureMode] = useState<boolean>(true);
 
-  // Auto-detect Symbol and Timeframe from a chart screenshot
+  // Option A & C API Rotation State Hooks
+  const [showApiSettings, setShowApiSettings] = useState<boolean>(false);
+  const [isKeyPoolExhausted, setIsKeyPoolExhausted] = useState<boolean>(false);
+  const [userGeminiKey, setUserGeminiKey] = useState<string>(() => localStorage.getItem("gaks_user_gemini_key") || "");
+  const [showAIOverlay, setShowAIOverlay] = useState<boolean>(true);
+  const [showUserKeyPassword, setShowUserKeyPassword] = useState<boolean>(false);
+
+  // Real-time key health status state
+  interface KeyStatusItem {
+    index: number;
+    name: string;
+    description: string;
+    masked: string;
+    isMock: boolean;
+    status: "exhausted" | "active" | "pending";
+  }
+
+  const [keyPoolStatus, setKeyPoolStatus] = useState<{
+    activeKeyIndex: number;
+    totalKeys: number;
+    isExhausted: boolean;
+    keys: KeyStatusItem[];
+  } | null>(null);
+
+  // Query key pool health from server
+  const fetchKeyPoolStatus = async () => {
+    try {
+      const res = await fetch("/api/key-pool/status");
+      if (res.ok) {
+        const data = await res.json();
+        setKeyPoolStatus(data);
+        setIsKeyPoolExhausted(data.isExhausted);
+      }
+    } catch (e) {
+      console.warn("Could not query key pool health:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchKeyPoolStatus();
+  }, [currentPage]);
+
+  const handleDepleteKey = async () => {
+    try {
+      const res = await fetch("/api/key-pool/deplete", { method: "POST" });
+      if (res.ok) {
+        await fetchKeyPoolStatus();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleResetKeyPool = async () => {
+    try {
+      const res = await fetch("/api/key-pool/reset", { method: "POST" });
+      if (res.ok) {
+        await fetchKeyPoolStatus();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUserKeyChange = (key: string) => {
+    setUserGeminiKey(key);
+    localStorage.setItem("gaks_user_gemini_key", key);
+    if (key.trim()) {
+      setIsKeyPoolExhausted(false); // Override shared depletion
+    } else {
+      fetchKeyPoolStatus();
+    }
+  };
+
+  // Auto-detect Symbol and Timeframe from a chart screenshot with API key fallback
   const detectSymbolAndTimeframe = async (base64Image: string) => {
     setIsDetectingSymbol(true);
     setDetectionConfidence(null);
@@ -337,8 +411,26 @@ export default function App() {
       const response = await fetch("/api/detect-symbol-timeframe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64Image })
+        body: JSON.stringify({ 
+          image: base64Image,
+          userApiKey: userGeminiKey
+        })
       });
+
+      // Intercept exhausted error state
+      if (response.status === 429) {
+        const data = await response.json();
+        if (data.error === "SHARED_KEYS_EXHAUSTED") {
+          setIsKeyPoolExhausted(true);
+          setShowApiSettings(true);
+          setAnalysisLogs((prev) => [
+            ...prev,
+            "⚠️ Auto-detection halted: Shared developer API allotment completed.",
+            "Override active. Provide your own Free Gemini Key below to bypass and scan instantly."
+          ]);
+        }
+      }
+
       if (response.ok) {
         const data = await response.json();
         if (data.symbol) {
@@ -352,6 +444,7 @@ export default function App() {
         if (data.confidence) {
           setDetectionConfidence(data.confidence);
         }
+        await fetchKeyPoolStatus();
       }
     } catch (err) {
       console.warn("Symbol and timeframe detection failed:", err);
@@ -571,10 +664,27 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
           },
           body: JSON.stringify({
             image: uploadedImage,
-            strategy: compositePrompt
+            strategy: compositePrompt,
+            userApiKey: userGeminiKey
           }),
           signal: controller.signal
         });
+
+        // Intercept rotation exhaustion
+        if (response.status === 429) {
+          const errData = await response.json();
+          if (errData.error === "SHARED_KEYS_EXHAUSTED") {
+            setAnalysisLogs((prev) => [
+              ...prev,
+              "⚠️ [Keys Pool Exhausted] All shared developer processing keys are depleted.",
+              "Please override with your personal Gemini API Key below in the API status panel."
+            ]);
+            setIsKeyPoolExhausted(true);
+            setShowApiSettings(true);
+            setIsAnalyzing(false);
+            return;
+          }
+        }
 
         // Intercept html redirects or bad response codes to retry with proxy/direct client query
         const contentType = response.headers.get("content-type") || "";
@@ -740,6 +850,9 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
       if (uploadedImage) {
         saveToHistory(uploadedImage, selectedStrategy, finalReport);
       }
+
+      // Refresh key health status
+      fetchKeyPoolStatus();
 
       setAnalysisLogs((prev) => [
         ...prev,
@@ -1219,6 +1332,166 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
             </span>
           </div>
 
+          {/* OPTION A: Key Pools & Custom Overrides Dashboard */}
+          <div className="card p-4 border border-neutral-800/60 rounded-xl bg-[#0d0d0d] mb-4 relative overflow-hidden">
+            {/* Background absolute ambient glow matching pool state */}
+            <div className={`absolute top-0 right-0 w-36 h-36 rounded-full filter blur-[50px] opacity-10 pointer-events-none transition-colors ${isKeyPoolExhausted ? "bg-red-500" : "bg-emerald-500"}`} />
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-sans">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${isKeyPoolExhausted ? "bg-red-950/40 border-red-500/30 text-red-400" : "bg-emerald-950/40 border-emerald-500/30 text-emerald-400"}`}>
+                  <i className={`ph ${isKeyPoolExhausted ? "ph-warning-circle" : "ph-arrows-clockwise"} text-lg`} />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-1.5 leading-none">
+                    Gemini API Keys Cluster
+                    {isKeyPoolExhausted ? (
+                      <span className="text-[10px] bg-red-950/60 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded font-bold uppercase leading-none">Exhausted</span>
+                    ) : (
+                      <span className="text-[10px] bg-emerald-950/60 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-bold uppercase leading-none">Active Pool</span>
+                    )}
+                  </h3>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    {userGeminiKey ? "Custom user key override is active and bypassing rotation pool." : "Sequential failover rotation with active backup nodes."}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-1.5 self-end sm:self-center">
+                <button
+                  onClick={() => setShowApiSettings(!showApiSettings)}
+                  className="bg-neutral-900 border border-neutral-800 hover:border-neutral-600 text-neutral-300 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-md select-none font-medium font-sans"
+                >
+                  <i className="ph ph-sliders text-sm" />
+                  <span>Configure Settings</span>
+                  <i className={`ph ${showApiSettings ? "ph-caret-up" : "ph-caret-down"} text-[10px]`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Micro progress line of keys status */}
+            {keyPoolStatus && (
+              <div className="mt-4 pt-4 border-t border-neutral-900 flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-1.5 flex-1">
+                  {keyPoolStatus.keys.map((k) => (
+                    <div
+                      key={k.index}
+                      className="flex-1 h-1.5 rounded-full relative group/key cursor-help"
+                      style={{
+                        backgroundColor:
+                          k.status === "exhausted"
+                            ? "var(--accent-red)"
+                            : k.status === "active"
+                            ? "var(--accent-green-text)"
+                            : "var(--border-color)"
+                      }}
+                      title={`Key #${k.index + 1} (${k.status.toUpperCase()})`}
+                    >
+                      {/* Tooltip on hover */}
+                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 bg-neutral-950 border border-neutral-800 text-neutral-200 text-[9px] font-mono rounded px-1.5 py-0.5 opacity-0 group-hover/key:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-2xl">
+                        Node #{k.index + 1}: {k.status.toUpperCase()} {k.isMock ? "(Demo Key)" : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <span className="text-[10px] text-neutral-500 font-mono select-none">
+                  {userGeminiKey ? "OVERRIDDEN" : `${keyPoolStatus.keys.filter(k => k.status !== "exhausted").length}/${keyPoolStatus.totalKeys} ONLINE`}
+                </span>
+              </div>
+            )}
+
+            {/* Main configuration panel */}
+            {showApiSettings && (
+              <div className="mt-4 pt-4 border-t border-neutral-900 space-y-4 animate-slideDown font-sans text-xs">
+                {/* 1. Custom key override section */}
+                <div className="bg-neutral-950/40 border border-neutral-800/80 rounded-xl p-3 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5 select-none">
+                      <i className="ph ph-key text-neutral-400" />
+                      Override with Personal API Key
+                    </label>
+                    <a
+                      href="https://aistudio.google.com/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors flex items-center gap-0.5 font-mono"
+                    >
+                      Get Free Key <i className="ph ph-arrow-square-out text-[9px]" />
+                    </a>
+                  </div>
+                  
+                  <div className="relative flex items-center">
+                    <input
+                      type={showUserKeyPassword ? "text" : "password"}
+                      value={userGeminiKey}
+                      onChange={(e) => handleUserKeyChange(e.target.value)}
+                      placeholder="Paste your free AI Studio Gemini API Key..."
+                      className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-3 py-2.5 rounded-lg pr-9 outline-none focus:border-neutral-600 font-mono transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUserKeyPassword(!showUserKeyPassword)}
+                      className="absolute right-3 text-neutral-500 hover:text-neutral-350 transition-colors"
+                      title={showUserKeyPassword ? "Hide API Key" : "Show API Key"}
+                    >
+                      <i className={`ph ${showUserKeyPassword ? "ph-eye-slash" : "ph-eye"} text-sm`} />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-neutral-500 pt-0.5 leading-relaxed">
+                    If configured, this custom key takes absolute precedence and fully bypasses the shared key pool. Kept securely in local sandbox storage.
+                  </p>
+                </div>
+
+                {/* 2. Simulation engine dashboard */}
+                <div className="border border-neutral-800 bg-neutral-950/30 rounded-xl p-3 space-y-3">
+                  <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-wider block">Key Rotation Simulator (Option A Verification)</span>
+                  
+                  {keyPoolStatus && (
+                    <div className="space-y-2 font-mono text-[11px] text-neutral-400">
+                      {keyPoolStatus.keys.map((k) => (
+                        <div key={k.index} className="flex justify-between items-center border-b border-neutral-900/60 py-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-rose-500 animate-pulse' : k.status === 'active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-neutral-600'}`} />
+                            <span className="text-neutral-300 font-medium">Node #{k.index + 1}</span>
+                            <span className="text-neutral-600 text-[10px] columns-[100px] inline-block max-w-[120px] truncate">{k.masked}</span>
+                            {k.isMock && <span className="bg-neutral-800 text-neutral-500 text-[8px] px-1 rounded">MOCK</span>}
+                          </div>
+                          <div>
+                            {k.status === "active" ? (
+                              <span className="text-emerald-400 font-bold uppercase text-[9.5px]">ACTIVE NODE</span>
+                            ) : k.status === "exhausted" ? (
+                              <span className="text-rose-500 text-[9px] uppercase">EXHAUSTED</span>
+                            ) : (
+                              <span className="text-neutral-500 text-[9px]">STANDBY</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      onClick={handleDepleteKey}
+                      disabled={isKeyPoolExhausted || !!userGeminiKey}
+                      className="bg-red-950/30 border border-red-900/45 hover:border-red-600 text-red-400 text-[10px] py-2 rounded-lg font-mono font-semibold transition-all hover:bg-red-950/50 disabled:opacity-40 select-none uppercase"
+                      title="Forcibly complete allotment of current active key to move rotation index"
+                    >
+                      Deplete Node #{keyPoolStatus ? keyPoolStatus.activeKeyIndex + 1 : "?"}
+                    </button>
+                    <button
+                      onClick={handleResetKeyPool}
+                      className="bg-neutral-900 border border-neutral-800 hover:border-neutral-650 text-neutral-300 text-[10px] py-2 rounded-lg font-mono font-semibold transition-all select-none uppercase"
+                      title="Reset rotation pool index back to zero"
+                    >
+                      Reset Pool
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <input
             type="file"
             ref={imageInputRef}
@@ -1264,13 +1537,91 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
                       <i className="ph ph-trash text-sm" />
                     </button>
                   </div>
-                  <div className="flex-1 overflow-hidden relative flex items-center justify-center bg-neutral-950/40 rounded-lg border border-neutral-800/80">
+                  <div className="flex-1 overflow-hidden relative flex items-center justify-center bg-neutral-950/40 rounded-lg border border-neutral-800/80 group">
                     <img
                       src={uploadedImage}
                       alt="Uploaded chart screenshot"
                       className="max-h-full max-w-full rounded-md object-contain"
                       referrerPolicy="no-referrer"
                     />
+
+                    {/* OPTION C: Visual overlays on top of the analyzed screenshot */}
+                    {analysisReport && showAIOverlay && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
+                      <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 bg-gradient-to-b from-black/20 via-transparent to-black/20 animate-fadeIn select-none">
+                        {analysisReport.signal === "BUY" ? (
+                          <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
+                            {/* Target Take Profit Zone (Green) */}
+                            <div className="h-[35%] w-full bg-emerald-500/10 border-b border-dashed border-emerald-500/50 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 top-2 bg-emerald-950/90 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                TAKE PROFIT (TP): {analysisReport.tp}
+                              </span>
+                              <span className="absolute right-2 top-2 text-[8px] font-mono text-emerald-500/60 uppercase tracking-widest">Reward Zone</span>
+                            </div>
+
+                            {/* Entry Level Line (Yellow/Orange) */}
+                            <div className="h-[30%] w-full border-b border-dashed border-amber-500/60 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 -translate-y-1/2 bg-amber-950/90 text-amber-400 border border-amber-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                                ESTIMATED ENTRY: {analysisReport.level}
+                              </span>
+                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-amber-500/60 uppercase tracking-widest">Trigger Level</span>
+                            </div>
+
+                            {/* Risk Stop Loss Zone (Red) */}
+                            <div className="h-[35%] w-full bg-rose-500/10 flex items-end justify-between px-4 pb-4 relative">
+                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-rose-500/50" />
+                              <span className="absolute left-2 bottom-2 bg-rose-950/90 text-rose-400 border border-rose-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                                STOP LOSS (SL): {analysisReport.sl}
+                              </span>
+                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-rose-500/60 uppercase tracking-widest">Risk Area</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
+                            {/* Risk Stop Loss Zone at the Top for SELL */}
+                            <div className="h-[35%] w-full bg-rose-500/10 border-b border-dashed border-rose-500/50 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 top-2 bg-rose-950/90 text-rose-400 border border-rose-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                                STOP LOSS (SL): {analysisReport.sl}
+                              </span>
+                              <span className="absolute right-2 top-2 text-[8px] font-mono text-rose-500/60 uppercase tracking-widest">Risk Area</span>
+                            </div>
+
+                            {/* Entry Level Line (Yellow/Orange) */}
+                            <div className="h-[30%] w-full border-b border-dashed border-amber-500/60 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 -translate-y-1/2 bg-amber-950/90 text-amber-400 border border-amber-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                                ESTIMATED ENTRY: {analysisReport.level}
+                              </span>
+                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-amber-500/60 uppercase tracking-widest">Trigger Level</span>
+                            </div>
+
+                            {/* Target Take Profit Zone at the Bottom for SELL */}
+                            <div className="h-[35%] w-full bg-emerald-500/10 flex items-end justify-between px-4 pb-4 relative">
+                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-emerald-500/50" />
+                              <span className="absolute left-2 bottom-2 bg-emerald-950/90 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                TAKE PROFIT (TP): {analysisReport.tp}
+                              </span>
+                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-emerald-500/60 uppercase tracking-widest">Reward Zone</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Toggle overlay controller */}
+                    {analysisReport && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAIOverlay(!showAIOverlay);
+                        }}
+                        className="absolute right-2 top-2 bg-neutral-900/95 hover:bg-neutral-800 border border-neutral-700 hover:border-neutral-500 text-neutral-350 rounded px-2.5 py-1 text-[10px] font-mono font-semibold select-none flex items-center gap-1 shadow-2xl pointer-events-auto transition-all z-20"
+                        title="Toggle AI Technical Target Overlays"
+                      >
+                        <i className={`ph ${showAIOverlay ? "ph-eye-slash" : "ph-eye"} text-[11px]`} />
+                        <span>{showAIOverlay ? "Hide Setup" : "Show Setup"}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 

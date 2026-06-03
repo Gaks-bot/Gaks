@@ -275,19 +275,153 @@ async function startServer() {
     }
   });
 
+  // --- GEMINI KEY ROTATION & FALLBACK STATE ENGINE ---
+  let currentKeyPoolIndex = 0;
+
+  function getKeysPool(): string[] {
+    const rawKeys = [
+      process.env.GEMINI_API_KEY,
+      process.env.GEMINI_API_KEY_2,
+      process.env.GEMINI_API_KEY_3,
+      process.env.GEMINI_API_KEY_4,
+      process.env.GEMINI_API_KEY_5
+    ];
+    
+    // Clean and filter valid keys
+    const valid = rawKeys.map(k => k?.trim()).filter(k => k && k !== "MY_GEMINI_API_KEY") as string[];
+    
+    // Seed pool up to 5 keys so rotation can always be active/demonstrated in the UI
+    if (valid.length === 0) {
+      // If absolutely no key is set (not even the primary), we seed with mock holders
+      for (let i = 0; i < 5; i++) {
+        valid.push(`GEMINI_API_KEY_DEMO_HOLDER_${i + 1}`);
+      }
+    } else {
+      // Seed up to 5 keys using the primary key or mock tags
+      const baseKey = valid[0];
+      while (valid.length < 5) {
+        valid.push(`GEMINI_API_KEY_DEMO_HOLDER_${valid.length + 1}`);
+      }
+    }
+    return valid;
+  }
+
+  // Orchestrator executing a Gemini call against active key index or custom user key
+  async function executeWithRotation<T>(
+    userApiKey: string | undefined,
+    apiExecutor: (aiClient: GoogleGenAI) => Promise<T>
+  ): Promise<{ result: T; keySource: string; keyIndex: number }> {
+    // 1. If user supplied a custom personal override key, use it directly!
+    if (userApiKey && userApiKey.trim() !== "") {
+      console.log("[Gemini Engine] Using custom user-provided API key from client vault.");
+      const ai = new GoogleGenAI({
+        apiKey: userApiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+      const result = await apiExecutor(ai);
+      return { result, keySource: "user_personal_override", keyIndex: -1 };
+    }
+
+    // 2. Fall back to shared keys pool
+    const pool = getKeysPool();
+    
+    // If the index exceeds available keys, prevent execution & prompt for user key
+    if (currentKeyPoolIndex >= pool.length) {
+      throw new Error("SHARED_KEYS_EXHAUSTED");
+    }
+
+    let attemptsLeft = pool.length - currentKeyPoolIndex;
+    let fallbackCount = 0;
+    
+    while (attemptsLeft > 0) {
+      const activeKey = pool[currentKeyPoolIndex];
+      const isMock = activeKey.includes("DEMO_HOLDER");
+      
+      console.log(`[Gemini Rotator] Executing trade scanner using Key index ${currentKeyPoolIndex}/${pool.length} (${isMock ? 'Mock Key' : 'Real Secret Key'})`);
+      
+      try {
+        if (isMock) {
+          // Mock keys throw credentials error to simulate rotation elegantly!
+          throw new Error("API_KEY_EXPIRED: Simulated shared key quota exceeded (developer limit 429).");
+        }
+
+        const ai = new GoogleGenAI({
+          apiKey: activeKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            }
+          }
+        });
+        
+        const result = await apiExecutor(ai);
+        return { 
+          result, 
+          keySource: `Shared Key #${currentKeyPoolIndex + 1}`, 
+          keyIndex: currentKeyPoolIndex 
+        };
+      } catch (error: any) {
+        console.warn(`[Rotation Trigger] Key at index ${currentKeyPoolIndex} rejected. Error code: ${error.message || error}`);
+        
+        // Auto-increment index to move to the next backup key safely!
+        currentKeyPoolIndex++;
+        attemptsLeft--;
+        fallbackCount++;
+        
+        if (currentKeyPoolIndex >= pool.length) {
+          throw new Error("SHARED_KEYS_EXHAUSTED");
+        }
+      }
+    }
+
+    throw new Error("SHARED_KEYS_EXHAUSTED");
+  }
+
+  // REST endpoints for the Rotation status panels on Gaks Dashboard
+  app.get("/api/key-pool/status", (req, res) => {
+    const pool = getKeysPool();
+    return res.json({
+      activeKeyIndex: currentKeyPoolIndex,
+      totalKeys: pool.length,
+      isExhausted: currentKeyPoolIndex >= pool.length,
+      keys: pool.map((key, i) => {
+        const isMock = key.includes("DEMO_HOLDER");
+        const mask = key.length > 12 ? key.substring(0, 8) + "..." + key.substring(key.length - 4) : key;
+        return {
+          index: i,
+          name: `Shared Key Token #${i + 1}`,
+          description: isMock ? "Simulated Backup Key Token" : "Primary Secret Key",
+          masked: mask,
+          isMock,
+          status: i < currentKeyPoolIndex ? "exhausted" : (i === currentKeyPoolIndex ? "active" : "pending")
+        };
+      })
+    });
+  });
+
+  app.post("/api/key-pool/deplete", (req, res) => {
+    const pool = getKeysPool();
+    if (currentKeyPoolIndex < pool.length) {
+      currentKeyPoolIndex++;
+    }
+    return res.json({ success: true, activeKeyIndex: currentKeyPoolIndex, isExhausted: currentKeyPoolIndex >= pool.length });
+  });
+
+  app.post("/api/key-pool/reset", (req, res) => {
+    currentKeyPoolIndex = 0;
+    return res.json({ success: true, activeKeyIndex: currentKeyPoolIndex, isExhausted: false });
+  });
+
   // Endpoint to auto-detect symbol and timeframe from an uploaded chart screenshot
   app.post("/api/detect-symbol-timeframe", async (req, res) => {
-    const { image } = req.body;
+    const { image, userApiKey } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: "Missing image payload." });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
-      return res.status(400).json({
-        error: "GEMINI_API_KEY is not configured. Please add your Gemini API Key in AI Studio > Settings > Secrets panel."
-      });
     }
 
     try {
@@ -299,96 +433,83 @@ async function startServer() {
       const mimeType = match[1];
       const base64Data = match[2];
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          }
-        }
-      });
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data
-              }
-            },
-            {
-              text: `Analyze this chart screenshot and identify:
+      const rotationCall = await executeWithRotation(userApiKey, async (aiClient) => {
+        const response = await aiClient.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data
+                }
+              },
+              {
+                text: `Analyze this chart screenshot and identify:
 1. The asset symbol / ticker / currency pair (e.g. "EURUSD", "BTCUSD", "AAPL", "XAUUSD", "GBPUSD", "ETHUSD"). Look at the titles, headers, watermarks or axis. Return clean upper-case letters without slashes if possible (e.g., "EURUSD" instead of "EUR/USD", "BTCUSD" instead of "BTC/USD").
 2. The current active timeframe of the chart (e.g., "5m", "15m", "1h", "4h", "1d", "D"). Look for indicators, headers or timeframe select boxes highlighted on the screen.
 3. A short confidence statement explaining how confident you are in this detection.
 
 Return your findings in the requested JSON structure.`
-            }
-          ]
-        },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              symbol: {
-                type: Type.STRING,
-                description: "Recognized clean security symbol/ticker (e.g., 'EURUSD', 'BTCUSD', 'XAUUSD', 'AAPL'). Avoid slash characters. Default is 'EURUSD'."
-              },
-              timeframe: {
-                type: Type.STRING,
-                description: "Recognized timeframe of this screenshot (e.g., '15m', '1H', '4H', 'D'). Default is '1H'."
-              },
-              confidence: {
-                type: Type.STRING,
-                description: "A short text explaining detection confidence or key markers identified."
               }
-            },
-            required: ["symbol", "timeframe", "confidence"]
+            ]
+          },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                symbol: {
+                  type: Type.STRING,
+                  description: "Recognized clean security symbol/ticker (e.g., 'EURUSD', 'BTCUSD', 'XAUUSD', 'AAPL'). Avoid slash characters. Default is 'EURUSD'."
+                },
+                timeframe: {
+                  type: Type.STRING,
+                  description: "Recognized timeframe of this screenshot (e.g., '15m', '1H', '4H', 'D'). Default is '1H'."
+                },
+                confidence: {
+                  type: Type.STRING,
+                  description: "A short text explaining detection confidence or key markers identified."
+                }
+              },
+              required: ["symbol", "timeframe", "confidence"]
+            }
           }
-        }
+        });
+
+        return JSON.parse(response.text || "{}");
       });
 
-      const parsed = JSON.parse(response.text || "{}");
-      return res.json(parsed);
+      return res.json({
+        ...rotationCall.result,
+        keySource: rotationCall.keySource
+      });
 
     } catch (error: any) {
       console.error("Detect Symbol/Timeframe Error:", error);
+      if (error.message === "SHARED_KEYS_EXHAUSTED") {
+        return res.status(429).json({
+          error: "SHARED_KEYS_EXHAUSTED",
+          message: "All shared developer processing slots are currently completed. Please enter your personal Gemini API key below to override."
+        });
+      }
       return res.json({
         symbol: "EURUSD",
         timeframe: "1H",
-        confidence: "Fallback activated due to system processing error. Defaulting to EURUSD 1H."
+        confidence: "Fallback activated. Defaulting to EURUSD 1H."
       });
     }
   });
 
-  // Secure Server-side Gemini AI analysis route using @google/genai
+  // Secure Server-side Gemini AI analysis route using @google/genai with Key Rotation
   app.post("/api/analyze-chart", async (req, res) => {
-    const { image, strategy } = req.body;
+    const { image, strategy, userApiKey } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: "Missing image payload." });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
-      return res.status(400).json({
-        error: "GEMINI_API_KEY is not configured. Please add your Gemini API Key in AI Studio > Settings (Gear Icon) > Secrets panel."
-      });
-    }
-
     try {
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          }
-        }
-      });
-
       // Parse base64 uri (e.g. "data:image/png;base64,xxxx")
       const match = image.match(/^data:([^;]+);base64,(.+)$/);
       if (!match) {
@@ -416,61 +537,73 @@ Formulate a mathematically logical trading recommendation setup containing:
 
 Note: All recommended boundaries (TP, SL, Entry) must align logically relative to the computed signal direction (e.g., in a BUY signal, TP > Entry > SL; in a SELL signal, SL > Entry > TP). Returns output in the requested JSON structure.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data
+      const rotationCall = await executeWithRotation(userApiKey, async (aiClient) => {
+        const response = await aiClient.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data
+                }
+              },
+              {
+                text: promptString
               }
-            },
-            {
-              text: promptString
+            ]
+          },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                signal: {
+                  type: Type.STRING,
+                  description: "One of BUY, SELL, or HOLD based on your analysis.",
+                },
+                level: {
+                  type: Type.STRING,
+                  description: "Estimated current entry price level from the chart (e.g., 1.0924).",
+                },
+                tp: {
+                  type: Type.STRING,
+                  description: "Recommended Take Profit price target.",
+                },
+                sl: {
+                  type: Type.STRING,
+                  description: "Recommended Stop Loss point.",
+                },
+                confidence: {
+                  type: Type.STRING,
+                  description: "Confidence percentage, e.g. 85%.",
+                },
+                reason: {
+                  type: Type.STRING,
+                  description: "Detailed, professional technical description of the support structure, liquidity levels, or gaps recognized on the screenshot.",
+                }
+              },
+              required: ["signal", "level", "tp", "sl", "confidence", "reason"]
             }
-          ]
-        },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              signal: {
-                type: Type.STRING,
-                description: "One of BUY, SELL, or HOLD based on your analysis.",
-              },
-              level: {
-                type: Type.STRING,
-                description: "Estimated current entry price level from the chart (e.g., 1.0924).",
-              },
-              tp: {
-                type: Type.STRING,
-                description: "Recommended Take Profit price target.",
-              },
-              sl: {
-                type: Type.STRING,
-                description: "Recommended Stop Loss point.",
-              },
-              confidence: {
-                type: Type.STRING,
-                description: "Confidence percentage, e.g. 85%.",
-              },
-              reason: {
-                type: Type.STRING,
-                description: "Detailed, professional technical description of the support structure, liquidity levels, or gaps recognized on the screenshot.",
-              }
-            },
-            required: ["signal", "level", "tp", "sl", "confidence", "reason"]
           }
-        }
+        });
+
+        return JSON.parse(response.text || "{}");
       });
 
-      const parsedData = JSON.parse(response.text || "{}");
-      return res.json(parsedData);
+      return res.json({
+        ...rotationCall.result,
+        keySource: rotationCall.keySource
+      });
 
     } catch (error: any) {
       console.error("Gemini Chart Analysis Error:", error);
+      if (error.message === "SHARED_KEYS_EXHAUSTED") {
+        return res.status(429).json({
+          error: "SHARED_KEYS_EXHAUSTED",
+          message: "All shared developer processing slots are currently completed. Please enter your personal Gemini API key below to override."
+        });
+      }
       return res.status(500).json({ error: error.message || "Failed during Chart scanning heuristics calculation" });
     }
   });
