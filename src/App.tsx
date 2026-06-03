@@ -554,36 +554,73 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
       ]);
 
       let response: Response;
+      let isFallbackToProxy = false;
       let isFallbackToDirect = false;
 
       try {
-        response = await fetch("/api/supabase-proxy", {
+        setAnalysisLogs((prev) => [
+          ...prev,
+          "Establishing visual link with secure AI Vision engine...",
+          "Decoding screenshot wicks & matching active candlesticks with strategy templates..."
+        ]);
+
+        response = await fetch("/api/analyze-chart", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            url: `${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`,
-            headers: {
-              "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-              "apikey": SUPABASE_ANON_KEY
-            },
-            body: {
-              prompt: compositePrompt,
-              temperature: 0.4
-            }
+            image: uploadedImage,
+            strategy: compositePrompt
           }),
           signal: controller.signal
         });
 
-        // Intercept html redirects or bad response codes to retry with direct client query
+        // Intercept html redirects or bad response codes to retry with proxy/direct client query
         const contentType = response.headers.get("content-type") || "";
         if (!response.ok || contentType.includes("text/html")) {
+          isFallbackToProxy = true;
+        }
+      } catch (primaryError) {
+        console.warn("[Local AI Vision Engine Bypass] Falling back to remote secure Deno proxy...", primaryError);
+        isFallbackToProxy = true;
+      }
+
+      if (isFallbackToProxy) {
+        try {
+          setAnalysisLogs((prev) => [
+            ...prev,
+            "Rerouting connection through serverless Deno middleware..."
+          ]);
+
+          response = await fetch("/api/supabase-proxy", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              url: `${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`,
+              headers: {
+                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                "apikey": SUPABASE_ANON_KEY
+              },
+              body: {
+                prompt: compositePrompt,
+                temperature: 0.4
+              }
+            }),
+            signal: controller.signal
+          });
+
+          // Intercept html redirects or bad response codes to retry with direct client query
+          const contentType = response.headers.get("content-type") || "";
+          if (!response.ok || contentType.includes("text/html")) {
+            isFallbackToDirect = true;
+          }
+        } catch (proxyError) {
+          console.warn("[Express Proxy Unreachable] Triggering direct client route fallback...", proxyError);
           isFallbackToDirect = true;
         }
-      } catch (proxyError) {
-        console.warn("[Express Proxy Unreachable] Triggering direct client route fallback...", proxyError);
-        isFallbackToDirect = true;
       }
 
       if (isFallbackToDirect) {
