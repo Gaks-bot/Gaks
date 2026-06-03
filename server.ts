@@ -365,9 +365,29 @@ async function startServer() {
           keyIndex: currentKeyPoolIndex 
         };
       } catch (error: any) {
-        console.warn(`[Rotation Trigger] Key at index ${currentKeyPoolIndex} rejected. Error code: ${error.message || error}`);
+        const errorString = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+        console.warn(`[Rotation Trigger] Key at index ${currentKeyPoolIndex} rejected. Error code: ${errorString}`);
         
-        // Auto-increment index to move to the next backup key safely!
+        // 1. Analyze if the error is a transient downstream service overload (503 UNAVAILABLE or network timeout)
+        const errStr = errorString.toLowerCase();
+        const isTransient = errStr.includes("503") || 
+                            errStr.includes("unavailable") || 
+                            errStr.includes("high demand") || 
+                            errStr.includes("temporary") || 
+                            errStr.includes("try again later") || 
+                            errStr.includes("timeout") || 
+                            errStr.includes("etimedout") || 
+                            error?.status === "UNAVAILABLE" || 
+                            error?.status === 503;
+
+        if (isTransient) {
+          console.log("[Gemini Rotator] Identified transient 503/UNAVAILABLE exception. Preserving key slot index to prevent premature key pool exhaustion.");
+          const friendlyError = new Error("Gemini is currently experiencing high demand (503 Service Unavailable). This is a temporary server spike, please try again in a few seconds.");
+          (friendlyError as any).status = 503;
+          throw friendlyError;
+        }
+
+        // 2. Auto-increment index to move to the next backup key only for actual exhaustion/auth depletion limits!
         currentKeyPoolIndex++;
         attemptsLeft--;
         fallbackCount++;
