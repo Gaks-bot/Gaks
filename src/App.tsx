@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
-// Supabase Configuration Values
-const SUPABASE_URL = "https://mhkyuaviapiadsnqqxbt.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1oa3l1YXZpYXBpYWRzbnFxeGJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMzgwMTgsImV4cCI6MjA5NTgxNDAxOH0.ZFjWBiRz3xFk6tVls9eXj2UqY0JHJcZVr2gXg2Q_A3s";
-const FUNCTION_NAME = "gemini-proxy";
+// Local node API config
+const LOCAL_API_URL = "/api";
 
 // Interfaces matching the exact structure from index-D5V-iQRb.js
 interface MarketPair {
@@ -403,8 +401,37 @@ export default function App() {
     }
   };
 
+  const [isTestingKey, setIsTestingKey] = useState<boolean>(false);
+  const [keyTestResult, setKeyTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestUserKey = async () => {
+    if (!userGeminiKey || !userGeminiKey.trim()) {
+      setKeyTestResult({ success: false, message: "Credential string is empty. Provide a key before submitting." });
+      return;
+    }
+    setIsTestingKey(true);
+    setKeyTestResult(null);
+    try {
+      const res = await fetch("/api/key-pool/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: userGeminiKey })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setKeyTestResult({ success: true, message: data.message || "Handshake succeeded!" });
+      } else {
+        setKeyTestResult({ success: false, message: data.error || data.details || "Credential confirmation rejected." });
+      }
+    } catch (e: any) {
+      setKeyTestResult({ success: false, message: e.message || "Verification network request timed out." });
+    } finally {
+      setIsTestingKey(false);
+    }
+  };
+
   // Auto-detect Symbol and Timeframe from a chart screenshot with API key fallback
-  const detectSymbolAndTimeframe = async (base64Image: string) => {
+  const detectSymbolAndTimeframe = async (base64Image: string, fileName?: string) => {
     setIsDetectingSymbol(true);
     setDetectionConfidence(null);
     try {
@@ -413,7 +440,9 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           image: base64Image,
-          userApiKey: userGeminiKey
+          userApiKey: userGeminiKey,
+          filename: fileName,
+          activeSymbol: activeMarketAsset?.pair || "EUR/USD"
         })
       });
 
@@ -422,7 +451,7 @@ export default function App() {
         const data = await response.json();
         if (data.error === "SHARED_KEYS_EXHAUSTED") {
           setIsKeyPoolExhausted(true);
-          setShowApiSettings(true);
+          setCurrentPage("keys");
           setAnalysisLogs((prev) => [
             ...prev,
             "⚠️ Auto-detection halted: Shared developer API allotment completed.",
@@ -562,7 +591,7 @@ export default function App() {
         setAnalysisReport(null);
         setAnalysisLogs([]);
         // Auto-detect symbol & timeframe from the screenshot
-        detectSymbolAndTimeframe(base64Str);
+        detectSymbolAndTimeframe(base64Str, file.name);
       }
     };
     reader.readAsDataURL(file);
@@ -596,16 +625,15 @@ export default function App() {
     setDetectionConfidence(null);
   };
 
-  // Perform Gemini analysis on uploaded charts via Supabase Edge Function
+  // Perform Gemini analysis on uploaded charts locally via internal node server
   const handleAnalyzeChart = async () => {
     if (!uploadedImage || isAnalyzing) return;
     setIsAnalyzing(true);
     setAnalysisReport(null);
     setAnalysisLogs([
-      "Initiating connection to Supabase Edge infrastructure...",
-      `Connecting to function [${FUNCTION_NAME}]...`,
+      "Establishing local sandbox analytical pipeline...",
       "Formatting strategy payload and compiling chart contextual heuristics...",
-      "Dispatching POST request to Supabase Secure Gateway..."
+      "Dispatching POST request to secure internal node backend..."
     ]);
 
     try {
@@ -636,139 +664,57 @@ Your output must contain exactly this structure with keys "signal", "level", "tp
   "reason": "Detailed bullet-point reasoning for this decision matching the input strategy rules, specifically detailing both the local screenshot patterns and the high-timeframe confirmation findings."
 }
 
-Provide ONLY raw, parseable JSON back without wrapping inside any markdown markdown tags (\`\`\`), code fencing or prefixing with 'json'. Just return the exact JSON block.`;
+Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags (\`\`\`), code fencing or prefixing with 'json'. Just return the exact JSON block.`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => {
+        try {
+          controller.abort();
+        } catch (_) {}
+      }, 60000);
 
       setAnalysisLogs((prev) => [
         ...prev,
-        "Transmitting prompt context in background stream..."
+        "Transmitting prompt context to secure AI vision parser..."
       ]);
 
-      let response: Response;
-      let isFallbackToProxy = false;
-      let isFallbackToDirect = false;
-
-      try {
-        setAnalysisLogs((prev) => [
-          ...prev,
-          "Establishing visual link with secure AI Vision engine...",
-          "Decoding screenshot wicks & matching active candlesticks with strategy templates..."
-        ]);
-
-        response = await fetch("/api/analyze-chart", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            image: uploadedImage,
-            strategy: compositePrompt,
-            userApiKey: userGeminiKey
-          }),
-          signal: controller.signal
-        });
-
-        // Intercept rotation exhaustion
-        if (response.status === 429) {
-          const errData = await response.json();
-          if (errData.error === "SHARED_KEYS_EXHAUSTED") {
-            setAnalysisLogs((prev) => [
-              ...prev,
-              "⚠️ [Keys Pool Exhausted] All shared developer processing keys are depleted.",
-              "Please override with your personal Gemini API Key below in the API status panel."
-            ]);
-            setIsKeyPoolExhausted(true);
-            setShowApiSettings(true);
-            setIsAnalyzing(false);
-            return;
-          }
-        }
-
-        // Intercept html redirects or bad response codes to retry with proxy/direct client query
-        const contentType = response.headers.get("content-type") || "";
-        if (!response.ok || contentType.includes("text/html")) {
-          isFallbackToProxy = true;
-        }
-      } catch (primaryError) {
-        console.warn("[Local AI Vision Engine Bypass] Falling back to remote secure Deno proxy...", primaryError);
-        isFallbackToProxy = true;
-      }
-
-      if (isFallbackToProxy) {
-        try {
-          setAnalysisLogs((prev) => [
-            ...prev,
-            "Rerouting connection through serverless Deno middleware..."
-          ]);
-
-          response = await fetch("/api/supabase-proxy", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              url: `${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`,
-              headers: {
-                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-                "apikey": SUPABASE_ANON_KEY
-              },
-              body: {
-                prompt: compositePrompt,
-                temperature: 0.4
-              }
-            }),
-            signal: controller.signal
-          });
-
-          // Intercept html redirects or bad response codes to retry with direct client query
-          const contentType = response.headers.get("content-type") || "";
-          if (!response.ok || contentType.includes("text/html")) {
-            isFallbackToDirect = true;
-          }
-        } catch (proxyError) {
-          console.warn("[Express Proxy Unreachable] Triggering direct client route fallback...", proxyError);
-          isFallbackToDirect = true;
-        }
-      }
-
-      if (isFallbackToDirect) {
-        setAnalysisLogs((prev) => [
-          ...prev,
-          "Redirecting connection: Serverless proxy bypassed.",
-          "Securing direct pipeline with Supabase Cloud execution grid..."
-        ]);
-
-        response = await fetch(`${SUPABASE_URL}/functions/v1/${FUNCTION_NAME}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-            "apikey": SUPABASE_ANON_KEY
-          },
-          body: JSON.stringify({
-            prompt: compositePrompt,
-            temperature: 0.4
-          }),
-          signal: controller.signal
-        });
-      }
+      const response = await fetch("/api/analyze-chart", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          image: uploadedImage,
+          strategy: compositePrompt,
+          userApiKey: userGeminiKey,
+          symbol: detectedSymbol
+        }),
+        signal: controller.signal
+      });
 
       clearTimeout(timeoutId);
 
+      let errPayload: any = null;
       if (!response.ok) {
-        const errPayload = await response.json().catch(() => ({}));
+        try {
+          errPayload = await response.json();
+        } catch (_) {
+          errPayload = {};
+        }
+
+        if (response.status === 429 || (errPayload && errPayload.error === "SHARED_KEYS_EXHAUSTED")) {
+          setIsKeyPoolExhausted(true);
+        }
+
         throw new Error(
-          errPayload.details || 
-          errPayload.error || 
-          `Supabase Gateway exception (Status code ${response.status})`
+          (errPayload && (errPayload.details || errPayload.error)) || 
+          `Local backend exception (Status code ${response.status})`
         );
       }
 
       setAnalysisLogs((prev) => [
         ...prev,
-        "Successfully fetched secure stream from Deno executor!",
+        "Successfully received visual intelligence payload!",
         "Extracting payload parts and decoding strategy report..."
       ]);
 
@@ -831,7 +777,7 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
           tp: fallbackTp,
           sl: fallbackSl,
           confidence: "82%",
-          reason: responseText ? responseText.slice(0, 350) + "..." : "Heuristics extracted directly from the Edge Function output."
+          reason: responseText ? responseText.slice(0, 350) + "..." : "Heuristics extracted directly from local node engine."
         };
       }
 
@@ -842,7 +788,7 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
         tp: String(parsedReport.tp || (1.1925).toFixed(4)),
         sl: String(parsedReport.sl || (1.1655).toFixed(4)),
         confidence: String(parsedReport.confidence || "85%"),
-        reason: String(parsedReport.reason || "Edge Function response parsed successfully matching chosen guidelines.")
+        reason: String(parsedReport.reason || "Local model response parsed successfully matching chosen guidelines.")
       };
 
       setAnalysisReport(finalReport);
@@ -857,42 +803,43 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
       setAnalysisLogs((prev) => [
         ...prev,
         "✓ AI analysis parsed cleanly!",
-        "Active analysis model: Deno edge proxy context complete."
+        "Active analysis model: Local sandbox orchestration complete."
       ]);
 
     } catch (err: any) {
-      console.error("[Supabase Edge Function Failure]", err);
-      const errMsg = err.message || "Request timed out or failed DNS lookup.";
+      console.error("[Local Process Failure]", err);
+      let errMsg = err.message || "Request timed out or failed backend route execution.";
+      const isAbort = err.name === "AbortError" || errMsg.toLowerCase().includes("abort") || errMsg.toLowerCase().includes("timeout");
+      
+      if (isAbort) {
+        errMsg = "The analysis request timed out (60-second limit exceeded). Please try again or check your API keys.";
+      }
+      
+      const isPoolExhausted = errMsg.includes("SHARED_KEYS_EXHAUSTED");
+      const isQuotaExceeded = errMsg.includes("429") || errMsg.toLowerCase().includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.toLowerCase().includes("limit");
 
       setAnalysisLogs((prev) => [
         ...prev,
-        `⚠️ Edge call failed: ${errMsg}`,
-        "Engaging premium on-device safe fallback heuristics..."
+        (isPoolExhausted || isQuotaExceeded)
+          ? "⚠️ [Gemini API Quota Limit] Google API quota is exhausted or developer key blocks are depleted."
+          : `⚠️ Connection failure: ${errMsg}`,
+        "Analysis failed: No active trading setup will be generated."
       ]);
 
-      // Gracefully switch to a beautiful computed recommendation block instead of hard failing
-      setTimeout(() => {
-        const calculatedRating = Math.random();
-        const computedSignal = calculatedRating > 0.6 ? "BUY" : calculatedRating > 0.25 ? "SELL" : "HOLD";
-        const currentTargetVal = (1.1749 + (Math.random() - 0.5) * 0.015).toFixed(4);
-        const randomTP = (parseFloat(currentTargetVal) + (computedSignal === "BUY" ? 0.012 : -0.012)).toFixed(4);
-        const randomSL = (parseFloat(currentTargetVal) - (computedSignal === "BUY" ? 0.008 : -0.008)).toFixed(4);
+      const failedReport: AnalysisReport = {
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: (isPoolExhausted || isQuotaExceeded)
+          ? "The shared or configured Gemini API quota limit has been exceeded. Please configure a personal Gemini API Key under the 'API Keys' tab or retry in a few moments."
+          : isAbort
+          ? "The request timed out because the AI model took longer than 60 seconds to process the chart screenshot. Please check that your network connection is stable, or configure a personal Gemini API key under the 'API Keys' tab for dedicated faster processing."
+          : `We encountered an API transmission or configuration problem. (Reason: ${errMsg})\n\nPotential Causes:\n1. Your configured personal API Key is invalid or expired.\n2. The request timed out or network connection was lost.\n3. The uploaded image size is too large or corrupted.\n4. Downstream AI service limit has been reached.`
+      };
 
-        const edgeFallback: AnalysisReport = {
-          signal: computedSignal,
-          level: currentTargetVal,
-          tp: randomTP,
-          sl: randomSL,
-          confidence: "88%",
-          reason: `[Local Fallback Mode Active] Local heuristic scanned the pattern successfully. Signal computed is ${computedSignal} at ${currentTargetVal}. (Unable to reach remote edge function at '${FUNCTION_NAME}')`
-        };
-
-        setAnalysisReport(edgeFallback);
-        if (uploadedImage) {
-          saveToHistory(uploadedImage, selectedStrategy, edgeFallback);
-        }
-        setAnalysisLogs((prev) => [...prev, "✓ Heuristic parsing complete (Local Backup)."]);
-      }, 1500);
+      setAnalysisReport(failedReport);
 
     } finally {
       setIsAnalyzing(false);
@@ -1228,7 +1175,7 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
           </div>
           <div className="text-[11px] flex gap-2 items-center mb-4 text-[#888]">
             <i className="ph ph-shield-check" />
-            <span>Secured via Supabase Edge Functions</span>
+            <span>Secured via Gaks Local sandbox Node</span>
           </div>
 
           <div className="space-y-[12px]">
@@ -1332,164 +1279,27 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
             </span>
           </div>
 
-          {/* OPTION A: Key Pools & Custom Overrides Dashboard */}
-          <div className="card p-4 border border-neutral-800/60 rounded-xl bg-[#0d0d0d] mb-4 relative overflow-hidden">
-            {/* Background absolute ambient glow matching pool state */}
-            <div className={`absolute top-0 right-0 w-36 h-36 rounded-full filter blur-[50px] opacity-10 pointer-events-none transition-colors ${isKeyPoolExhausted ? "bg-red-500" : "bg-emerald-500"}`} />
-            
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-sans">
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${isKeyPoolExhausted ? "bg-red-950/40 border-red-500/30 text-red-400" : "bg-emerald-950/40 border-emerald-500/30 text-emerald-400"}`}>
-                  <i className={`ph ${isKeyPoolExhausted ? "ph-warning-circle" : "ph-arrows-clockwise"} text-lg`} />
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-1.5 leading-none">
-                    Gemini API Keys Cluster
-                    {isKeyPoolExhausted ? (
-                      <span className="text-[10px] bg-red-950/60 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded font-bold uppercase leading-none">Exhausted</span>
-                    ) : (
-                      <span className="text-[10px] bg-emerald-950/60 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-bold uppercase leading-none">Active Pool</span>
-                    )}
-                  </h3>
-                  <p className="text-[11px] text-neutral-400 mt-1">
-                    {userGeminiKey ? "Custom user key override is active and bypassing rotation pool." : "Sequential failover rotation with active backup nodes."}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-1.5 self-end sm:self-center">
-                <button
-                  onClick={() => setShowApiSettings(!showApiSettings)}
-                  className="bg-neutral-900 border border-neutral-800 hover:border-neutral-600 text-neutral-300 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-md select-none font-medium font-sans"
-                >
-                  <i className="ph ph-sliders text-sm" />
-                  <span>Configure Settings</span>
-                  <i className={`ph ${showApiSettings ? "ph-caret-up" : "ph-caret-down"} text-[10px]`} />
-                </button>
-              </div>
-            </div>
-
-            {/* Micro progress line of keys status */}
-            {keyPoolStatus && (
-              <div className="mt-4 pt-4 border-t border-neutral-900 flex items-center justify-between gap-2.5">
-                <div className="flex items-center gap-1.5 flex-1">
-                  {keyPoolStatus.keys.map((k) => (
-                    <div
-                      key={k.index}
-                      className="flex-1 h-1.5 rounded-full relative group/key cursor-help"
-                      style={{
-                        backgroundColor:
-                          k.status === "exhausted"
-                            ? "var(--accent-red)"
-                            : k.status === "active"
-                            ? "var(--accent-green-text)"
-                            : "var(--border-color)"
-                      }}
-                      title={`Key #${k.index + 1} (${k.status.toUpperCase()})`}
-                    >
-                      {/* Tooltip on hover */}
-                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 bg-neutral-950 border border-neutral-800 text-neutral-200 text-[9px] font-mono rounded px-1.5 py-0.5 opacity-0 group-hover/key:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-2xl">
-                        Node #{k.index + 1}: {k.status.toUpperCase()} {k.isMock ? "(Demo Key)" : ""}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <span className="text-[10px] text-neutral-500 font-mono select-none">
-                  {userGeminiKey ? "OVERRIDDEN" : `${keyPoolStatus.keys.filter(k => k.status !== "exhausted").length}/${keyPoolStatus.totalKeys} ONLINE`}
+          {/* Real-time active key cluster indicator */}
+          <div 
+            onClick={() => setCurrentPage("keys")}
+            className="flex items-center justify-between p-3.5 mb-4 rounded-xl border border-neutral-800 hover:border-neutral-700 cursor-pointer transition-all animate-fadeIn select-none"
+            style={{ backgroundColor: "var(--card-bg)" }}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-400" : "bg-emerald-400"}`}></span>
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-500" : "bg-emerald-500"}`}></span>
+              </span>
+              <div className="text-xs font-sans">
+                <span className="text-neutral-400">Gemini Neural Stack: </span>
+                <span className="font-semibold text-neutral-200">
+                  {userGeminiKey ? "Credentials Overridden" : isKeyPoolExhausted ? "All Shared Keys Depleted" : "Failover Guards Active"}
                 </span>
               </div>
-            )}
-
-            {/* Main configuration panel */}
-            {showApiSettings && (
-              <div className="mt-4 pt-4 border-t border-neutral-900 space-y-4 animate-slideDown font-sans text-xs">
-                {/* 1. Custom key override section */}
-                <div className="bg-neutral-950/40 border border-neutral-800/80 rounded-xl p-3 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5 select-none">
-                      <i className="ph ph-key text-neutral-400" />
-                      Override with Personal API Key
-                    </label>
-                    <a
-                      href="https://aistudio.google.com/"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors flex items-center gap-0.5 font-mono"
-                    >
-                      Get Free Key <i className="ph ph-arrow-square-out text-[9px]" />
-                    </a>
-                  </div>
-                  
-                  <div className="relative flex items-center">
-                    <input
-                      type={showUserKeyPassword ? "text" : "password"}
-                      value={userGeminiKey}
-                      onChange={(e) => handleUserKeyChange(e.target.value)}
-                      placeholder="Paste your free AI Studio Gemini API Key..."
-                      className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-3 py-2.5 rounded-lg pr-9 outline-none focus:border-neutral-600 font-mono transition-colors"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowUserKeyPassword(!showUserKeyPassword)}
-                      className="absolute right-3 text-neutral-500 hover:text-neutral-350 transition-colors"
-                      title={showUserKeyPassword ? "Hide API Key" : "Show API Key"}
-                    >
-                      <i className={`ph ${showUserKeyPassword ? "ph-eye-slash" : "ph-eye"} text-sm`} />
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-neutral-500 pt-0.5 leading-relaxed">
-                    If configured, this custom key takes absolute precedence and fully bypasses the shared key pool. Kept securely in local sandbox storage.
-                  </p>
-                </div>
-
-                {/* 2. Simulation engine dashboard */}
-                <div className="border border-neutral-800 bg-neutral-950/30 rounded-xl p-3 space-y-3">
-                  <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-wider block">Key Rotation Simulator (Option A Verification)</span>
-                  
-                  {keyPoolStatus && (
-                    <div className="space-y-2 font-mono text-[11px] text-neutral-400">
-                      {keyPoolStatus.keys.map((k) => (
-                        <div key={k.index} className="flex justify-between items-center border-b border-neutral-900/60 py-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-rose-500 animate-pulse' : k.status === 'active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-neutral-600'}`} />
-                            <span className="text-neutral-300 font-medium">Node #{k.index + 1}</span>
-                            <span className="text-neutral-600 text-[10px] columns-[100px] inline-block max-w-[120px] truncate">{k.masked}</span>
-                            {k.isMock && <span className="bg-neutral-800 text-neutral-500 text-[8px] px-1 rounded">MOCK</span>}
-                          </div>
-                          <div>
-                            {k.status === "active" ? (
-                              <span className="text-emerald-400 font-bold uppercase text-[9.5px]">ACTIVE NODE</span>
-                            ) : k.status === "exhausted" ? (
-                              <span className="text-rose-500 text-[9px] uppercase">EXHAUSTED</span>
-                            ) : (
-                              <span className="text-neutral-500 text-[9px]">STANDBY</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      onClick={handleDepleteKey}
-                      disabled={isKeyPoolExhausted || !!userGeminiKey}
-                      className="bg-red-950/30 border border-red-900/45 hover:border-red-600 text-red-400 text-[10px] py-2 rounded-lg font-mono font-semibold transition-all hover:bg-red-950/50 disabled:opacity-40 select-none uppercase"
-                      title="Forcibly complete allotment of current active key to move rotation index"
-                    >
-                      Deplete Node #{keyPoolStatus ? keyPoolStatus.activeKeyIndex + 1 : "?"}
-                    </button>
-                    <button
-                      onClick={handleResetKeyPool}
-                      className="bg-neutral-900 border border-neutral-800 hover:border-neutral-650 text-neutral-300 text-[10px] py-2 rounded-lg font-mono font-semibold transition-all select-none uppercase"
-                      title="Reset rotation pool index back to zero"
-                    >
-                      Reset Pool
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
+            <span className="text-[10px] font-mono font-semibold text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 px-2 py-1 rounded-md flex items-center gap-1 transition-all">
+              Manage Nodes <i className="ph ph-key text-[10px]" />
+            </span>
           </div>
 
           <input
@@ -1749,7 +1559,11 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
           )}
 
           {analysisReport && (
-            <div className="card p-5 border border-dashed border-neutral-700 rounded-xl space-y-3 bg-[#111] animate-fadeIn mb-4">
+            <div className={`card p-5 border rounded-xl space-y-3 bg-[#111] animate-fadeIn mb-4 ${
+              analysisReport.signal === "FAILED" 
+                ? "border-rose-950/60 shadow-[0_0_15px_rgba(239,68,68,0.05)]" 
+                : "border-dashed border-neutral-700"
+            }`}>
               <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
                 <div className="flex items-center gap-2">
                   <span
@@ -1758,38 +1572,50 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
                         ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
                         : analysisReport.signal === "SELL"
                         ? "bg-rose-950 text-rose-400 border border-rose-500/20"
+                        : analysisReport.signal === "FAILED"
+                        ? "bg-rose-950/80 text-rose-300 border border-rose-800/30"
                         : "bg-neutral-800 text-neutral-300"
                     }`}
                   >
-                    {analysisReport.signal} setup
+                    {analysisReport.signal === "FAILED" ? "ANALYSIS FAILED" : `${analysisReport.signal} setup`}
                   </span>
-                  <span className="text-xs text-neutral-500 font-mono">
-                    Confidence: {analysisReport.confidence}
-                  </span>
+                  {analysisReport.signal !== "FAILED" && (
+                    <span className="text-xs text-neutral-500 font-mono">
+                      Confidence: {analysisReport.confidence}
+                    </span>
+                  )}
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">
-                    Strategy Checked
+                    {analysisReport.signal === "FAILED" ? "SYSTEM OUTCOME" : "Strategy Checked"}
                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5 font-mono text-xs text-neutral-400 py-1">
-                <div className="border border-neutral-800 bg-neutral-950 p-2 rounded">
-                  <div className="text-[9px] text-neutral-600 mb-0.5">TRIGGER LEVEL</div>
-                  <div className="font-bold text-neutral-200">{analysisReport.level}</div>
+              {analysisReport.signal !== "FAILED" && (
+                <div className="grid grid-cols-3 gap-2.5 font-mono text-xs text-neutral-400 py-1">
+                  <div className="border border-neutral-800 bg-neutral-950 p-2 rounded">
+                    <div className="text-[9px] text-neutral-600 mb-0.5">TRIGGER LEVEL</div>
+                    <div className="font-bold text-neutral-200">{analysisReport.level}</div>
+                  </div>
+                  <div className="border border-neutral-800 bg-neutral-950 p-2 rounded">
+                    <div className="text-[9px] text-neutral-600 mb-0.5">TAKE PROFIT (TP)</div>
+                    <div className="font-bold text-emerald-500">{analysisReport.tp}</div>
+                  </div>
+                  <div className="border border-neutral-800 bg-[#090909] p-2 rounded">
+                    <div className="text-[9px] text-neutral-600 mb-0.5">STOP LOSS (SL)</div>
+                    <div className="font-bold text-rose-500">{analysisReport.sl}</div>
+                  </div>
                 </div>
-                <div className="border border-neutral-800 bg-neutral-950 p-2 rounded">
-                  <div className="text-[9px] text-neutral-600 mb-0.5">TAKE PROFIT (TP)</div>
-                  <div className="font-bold text-emerald-500">{analysisReport.tp}</div>
-                </div>
-                <div className="border border-neutral-800 bg-neutral-950 p-2 rounded">
-                  <div className="text-[9px] text-neutral-600 mb-0.5">STOP LOSS (SL)</div>
-                  <div className="font-bold text-rose-500">{analysisReport.sl}</div>
-                </div>
-              </div>
+              )}
 
-              <p className="text-xs text-neutral-400 leading-relaxed font-sans mt-2">
+              {analysisReport.signal === "FAILED" && (
+                <div className="text-rose-400 font-semibold text-xs flex items-center gap-1.5 pt-1">
+                  <span className="animate-pulse">●</span> Possible cause identified by Gaks System Diagnostics
+                </div>
+              )}
+
+              <p className="text-xs text-neutral-400 leading-relaxed font-sans mt-2 whitespace-pre-line">
                 {analysisReport.reason}
               </p>
             </div>
@@ -2394,6 +2220,180 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
             </div>
           </div>
         </div>
+
+        {/* --- API KEYS CLUSTER PAGE --- */}
+        <div id="keys" className={`page ${currentPage === "keys" ? "active" : ""}`}>
+          <div className="flex flex-col gap-1 mb-6">
+            <h2 className="text-xl font-bold tracking-tight text-white m-[0px] flex items-center gap-2">
+              <i className="ph ph-sliders text-emerald-400" />
+              API Cluster Console
+            </h2>
+            <p className="text-[11px] text-neutral-500 m-[0px] font-sans">
+              Manage failover credentials, test handshake parameters, and customize visual intelligence keys.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* Quick KPI stats row */}
+            <div className="grid grid-cols-2 gap-3 font-sans">
+              <div className="card p-3 border border-neutral-800/60 bg-neutral-950/20 rounded-xl">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Active Cluster</span>
+                <span className="text-sm font-bold text-neutral-100 flex items-center gap-1.5 font-mono">
+                  <span className={`h-2 w-2 rounded-full ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-500 animate-pulse" : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"}`} />
+                  {userGeminiKey ? "User Direct" : isKeyPoolExhausted ? "DEPLETED" : "FAILS SAFE"}
+                </span>
+              </div>
+              <div className="card p-3 border border-neutral-800/60 bg-neutral-950/20 rounded-xl">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Failover Coverage</span>
+                <span className="text-sm font-bold text-neutral-100 flex items-center gap-1.5 font-mono">
+                  <i className="ph ph-shield-check text-emerald-400 text-sm" />
+                  {userGeminiKey ? "Unlimited" : isKeyPoolExhausted ? "0 Nodes Live" : `${keyPoolStatus?.keys.filter(k => k.status !== "exhausted").length || 0} / 5 Backup`}
+                </span>
+              </div>
+            </div>
+
+            {/* Panel 1: Personal Credentials Override */}
+            <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-2 leading-none font-sans">
+                  <i className="ph ph-key text-amber-500" />
+                  Personal Override Key
+                </h3>
+                <a
+                  href="https://aistudio.google.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-amber-500 hover:text-amber-400 transition-colors flex items-center gap-0.5 font-mono font-medium"
+                >
+                  Get Free Key <i className="ph ph-arrow-square-out text-[9px]" />
+                </a>
+              </div>
+
+              <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
+                By entering a personal Gemini API key, you bypass public fallback limits. Your key remains stored locally on your device.
+              </p>
+
+              <div className="space-y-3 font-sans">
+                <div className="relative flex items-center">
+                  <input
+                    type={showUserKeyPassword ? "text" : "password"}
+                    value={userGeminiKey}
+                    onChange={(e) => {
+                      handleUserKeyChange(e.target.value);
+                      setKeyTestResult(null);
+                    }}
+                    placeholder="Enter your Gemini AI Studio API key..."
+                    className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-lg pr-10 outline-none focus:border-neutral-600 font-mono transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowUserKeyPassword(!showUserKeyPassword)}
+                    className="absolute right-3.5 text-neutral-500 hover:text-neutral-350 transition-colors"
+                    title={showUserKeyPassword ? "Hide API Key" : "Show API Key"}
+                  >
+                    <i className={`ph ${showUserKeyPassword ? "ph-eye-slash" : "ph-eye"} text-sm`} />
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleTestUserKey}
+                    disabled={isTestingKey || !userGeminiKey.trim()}
+                    className="flex-1 bg-neutral-900 hover:bg-neutral-800/80 border border-neutral-800 hover:border-neutral-700 text-neutral-300 text-xs py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all select-none font-medium font-sans disabled:opacity-45 disabled:cursor-not-allowed"
+                  >
+                    {isTestingKey ? (
+                      <>
+                        <i className="ph ph-arrow-clockwise animate-spin" />
+                        <span>Testing handshakes...</span>
+                      </>
+                    ) : (
+                      <>
+                        <i className="ph ph-pulse" />
+                        <span>Test Key Handshake</span>
+                      </>
+                    )}
+                  </button>
+                  
+                  {userGeminiKey.trim() && (
+                    <button
+                      onClick={() => {
+                        handleUserKeyChange("");
+                        setKeyTestResult(null);
+                      }}
+                      className="bg-neutral-905 hover:bg-neutral-800/80 border border-neutral-800 text-neutral-400 hover:text-white px-3 py-2.5 rounded-lg flex items-center justify-center transition-all"
+                      title="Clear custom override key"
+                    >
+                      <i className="ph ph-x text-xs" />
+                    </button>
+                  )}
+                </div>
+
+                {keyTestResult && (
+                  <div className={`p-3 rounded-xl border flex items-start gap-2.5 animate-fadeIn ${keyTestResult.success ? "bg-emerald-950/20 border-emerald-500/20 text-emerald-300" : "bg-rose-950/20 border-rose-500/20 text-rose-300"}`}>
+                    <i className={`ph ${keyTestResult.success ? "ph-shield-check text-emerald-400" : "ph-warning-octagon text-rose-400"} text-base mt-0.5`} />
+                    <div className="text-[11px] leading-relaxed">
+                      <span className="font-semibold block mb-0.5">{keyTestResult.success ? "Handshake Succeeded" : "Handshake Failed"}</span>
+                      {keyTestResult.message}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Panel 2: Live Cluster Status Board */}
+            <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
+              <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-2 mb-3 leading-none font-sans">
+                <i className="ph ph-arrows-clockwise text-emerald-400" />
+                Network Failover Pool
+              </h3>
+              <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
+                Our local backend manages 5 shared backup keys. In case of developer quota exhausted or HTTP 429 limits, requests are auto-routed to active standbys.
+              </p>
+
+              {keyPoolStatus && (
+                <div className="space-y-2.5 font-mono text-[11px] text-neutral-400 border border-neutral-900 bg-neutral-950/30 rounded-xl p-3 mb-4">
+                  {keyPoolStatus.keys.map((k) => (
+                    <div key={k.index} className="flex justify-between items-center border-b border-neutral-900/40 py-1.5 last:border-0 last:pb-0 first:pt-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-rose-500 animate-pulse' : k.status === 'active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-neutral-600'}`} />
+                        <span className="text-neutral-300 font-medium">Node #{k.index + 1}</span>
+                        <span className="text-neutral-600 text-[10px] inline-block max-w-[120px] truncate">{k.masked}</span>
+                        {k.isMock && <span className="bg-neutral-900 text-neutral-500 text-[8px] px-1.5 py-0.5 rounded border border-neutral-800 flex items-center">MOCK</span>}
+                      </div>
+                      <div>
+                        {k.status === "active" ? (
+                          <span className="text-emerald-400 font-bold uppercase text-[9px] bg-emerald-950/50 border border-emerald-500/20 px-1.5 py-0.5 rounded">ACTIVE CLIENT</span>
+                        ) : k.status === "exhausted" ? (
+                          <span className="text-rose-500 text-[9px] font-bold uppercase bg-rose-950/50 border border-rose-500/10 px-1.5 py-0.5 rounded">DEPLETED</span>
+                        ) : (
+                          <span className="text-neutral-500 text-[9px] uppercase bg-neutral-900/60 border border-neutral-850 px-1.5 py-0.5 rounded">STANDBY</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 font-sans pt-1">
+                <button
+                  onClick={handleDepleteKey}
+                  disabled={isKeyPoolExhausted || !!userGeminiKey}
+                  className="bg-neutral-900 border border-neutral-800 hover:border-red-900/60 hover:bg-rose-950/20 text-neutral-400 hover:text-red-400 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all disabled:opacity-40 select-none uppercase"
+                  title="Forcibly complete allotment of current active key to move rotation index"
+                >
+                  Deplete Active Node
+                </button>
+                <button
+                  onClick={handleResetKeyPool}
+                  className="bg-neutral-900 border border-neutral-800 hover:border-neutral-650 text-neutral-300 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all select-none uppercase"
+                  title="Reset rotation pool index back to zero"
+                >
+                  Reset Pool Nodes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Dynamic Bottom Navigation bar */}
@@ -2432,6 +2432,13 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown markd
             )}
           </div>
           Alerts
+        </div>
+        <div
+          className={`nav-item ${currentPage === "keys" ? "active" : ""}`}
+          onClick={() => setCurrentPage("keys")}
+        >
+          <i className="ph ph-key" />
+          API Keys
         </div>
       </nav>
 
