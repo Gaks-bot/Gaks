@@ -1582,6 +1582,8 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
                         ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
                         : analysisReport.signal === "SELL"
                         ? "bg-rose-950 text-rose-400 border border-rose-500/20"
+                        : analysisReport.signal === "NO TRADE" || analysisReport.signal === "NO_TRADE"
+                        ? "bg-amber-950 text-amber-400 border border-amber-500/20"
                         : analysisReport.signal === "FAILED"
                         ? "bg-rose-950/80 text-rose-300 border border-rose-800/30"
                         : "bg-neutral-800 text-neutral-300"
@@ -2524,6 +2526,8 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
                               ? "bg-emerald-950/80 text-emerald-400 border border-emerald-500/20"
                               : item.report.signal === "SELL"
                               ? "bg-rose-950/80 text-rose-400 border border-rose-500/20"
+                              : item.report.signal === "NO TRADE" || item.report.signal === "NO_TRADE"
+                              ? "bg-amber-950/80 text-amber-400 border border-amber-500/20"
                               : "bg-neutral-800 text-neutral-300"
                           }`}
                         >
