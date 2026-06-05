@@ -376,7 +376,7 @@ export default function App() {
         await fetchKeyPoolStatus();
       }
     } catch (e) {
-      console.error(e);
+      console.warn(e);
     }
   };
 
@@ -387,7 +387,7 @@ export default function App() {
         await fetchKeyPoolStatus();
       }
     } catch (e) {
-      console.error(e);
+      console.warn(e);
     }
   };
 
@@ -807,7 +807,7 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
       ]);
 
     } catch (err: any) {
-      console.error("[Local Process Failure]", err);
+      console.warn("[Local Process Failure]", err);
       let errMsg = err.message || "Request timed out or failed backend route execution.";
       const isAbort = err.name === "AbortError" || errMsg.toLowerCase().includes("abort") || errMsg.toLowerCase().includes("timeout");
       
@@ -1287,20 +1287,30 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
           >
             <div className="flex items-center gap-2.5">
               <span className="relative flex h-2.5 w-2.5">
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-400" : "bg-emerald-400"}`}></span>
-                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-500" : "bg-emerald-500"}`}></span>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${userGeminiKey ? "bg-emerald-400" : "bg-amber-400"}`}></span>
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${userGeminiKey ? "bg-emerald-500" : "bg-amber-500"}`}></span>
               </span>
               <div className="text-xs font-sans">
                 <span className="text-neutral-400">Gemini Neural Stack: </span>
-                <span className="font-semibold text-neutral-200">
-                  {userGeminiKey ? "Credentials Overridden" : isKeyPoolExhausted ? "All Shared Keys Depleted" : "Failover Guards Active"}
+                <span className={`font-semibold ${userGeminiKey ? "text-emerald-400" : "text-amber-500"}`}>
+                  {userGeminiKey ? "Direct User Key Active" : "Personal API Key Required"}
                 </span>
               </div>
             </div>
             <span className="text-[10px] font-mono font-semibold text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 px-2 py-1 rounded-md flex items-center gap-1 transition-all">
-              Manage Nodes <i className="ph ph-key text-[10px]" />
+              Configure Key <i className="ph ph-key text-[10px]" />
             </span>
           </div>
+
+          {!userGeminiKey && (
+            <div className="p-3.5 mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-300 text-xs flex gap-2.5 items-start">
+              <i className="ph ph-warning-octagon text-lg text-amber-400 mt-0.5" />
+              <div>
+                <span className="font-bold block mb-0.5">Personal Gemini API Key Required</span>
+                To analyze chart screenshots and detect symbols, you must configure a personal Gemini API key. Go to the <span className="underline cursor-pointer font-bold hover:text-amber-200 transition-colors" onClick={() => setCurrentPage("keys")}>API Keys</span> page to save yours locally.
+              </div>
+            </div>
+          )}
 
           <input
             type="file"
