@@ -411,59 +411,193 @@ export default function App() {
     }
     setIsTestingKey(true);
     setKeyTestResult(null);
+
+    let data: any = {};
+    let responseOk = false;
+
     try {
       const res = await fetch("/api/key-pool/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: userGeminiKey })
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success) {
-        setKeyTestResult({ success: true, message: data.message || "Handshake succeeded!" });
-      } else {
-        setKeyTestResult({ success: false, message: data.error || data.details || "Credential confirmation rejected." });
-      }
-    } catch (e: any) {
-      setKeyTestResult({ success: false, message: e.message || "Verification network request timed out." });
-    } finally {
-      setIsTestingKey(false);
+      responseOk = res.ok;
+      data = await res.json().catch(() => ({}));
+    } catch (serverErr) {
+      console.warn("Server-side verification failed, trying direct client-side verification:", serverErr);
     }
+
+    // Fall back to direct client handshake if server is offline or returned an error
+    if (!responseOk || !data.success) {
+      if (userGeminiKey.startsWith("GEMINI_API_KEY_DEMO_HOLDER") || userGeminiKey.trim() === "DEMO_KEY") {
+        setKeyTestResult({ success: true, message: "Demo Key formatted cleanly. Sandbox simulation check succeeded." });
+        setIsTestingKey(false);
+        return;
+      }
+
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
+        const geminiRes = await fetch(geminiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: "Return 'OK'" }]
+            }]
+          })
+        });
+
+        if (geminiRes.ok) {
+          setKeyTestResult({ success: true, message: "Direct verification handshake succeeded. Key is active and authorized!" });
+        } else {
+          const geminiErrData = await geminiRes.json().catch(() => ({}));
+          const apiErrorMsg = geminiErrData?.error?.message || `Google API returned status code ${geminiRes.status}`;
+          setKeyTestResult({ success: false, message: apiErrorMsg });
+        }
+      } catch (clientErr: any) {
+        setKeyTestResult({ success: false, message: clientErr.message || "Direct handshake failed. Please check network connectivity and details." });
+      }
+    } else {
+      setKeyTestResult({ success: true, message: data.message || "Handshake succeeded!" });
+    }
+    setIsTestingKey(false);
   };
 
   // Auto-detect Symbol and Timeframe from a chart screenshot with API key fallback
   const detectSymbolAndTimeframe = async (base64Image: string, fileName?: string) => {
     setIsDetectingSymbol(true);
     setDetectionConfidence(null);
-    try {
-      const response = await fetch("/api/detect-symbol-timeframe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          image: base64Image,
-          userApiKey: userGeminiKey,
-          filename: fileName,
-          activeSymbol: activeMarketAsset?.pair || "EUR/USD"
-        })
-      });
 
-      // Intercept exhausted error state
-      if (response.status === 429) {
-        const data = await response.json();
-        if (data.error === "SHARED_KEYS_EXHAUSTED") {
-          setIsKeyPoolExhausted(true);
-          setCurrentPage("keys");
-          setAnalysisLogs((prev) => [
-            ...prev,
-            "⚠️ Auto-detection halted: Shared developer API allotment completed.",
-            "Override active. Provide your own Free Gemini Key below to bypass and scan instantly."
-          ]);
+    const detectSymbolFromFilename = (name?: string): string | null => {
+      if (!name) return null;
+      const lower = name.toLowerCase();
+      const clean = lower.replace(/[\/\s-_()]/g, "");
+      if (clean.includes("gbpusd") || clean.includes("gpbusd") || clean.includes("gbp_usd")) return "GBPUSD";
+      if (clean.includes("eurusd") || clean.includes("eur_usd")) return "EURUSD";
+      if (clean.includes("usdjpy") || clean.includes("usd_jpy") || clean.includes("jpy")) return "USDJPY";
+      if (clean.includes("usdchf") || clean.includes("usd_chf")) return "USDCHF";
+      if (clean.includes("audusd") || clean.includes("aud_usd")) return "AUDUSD";
+      if (clean.includes("usdcad") || clean.includes("usd_cad")) return "USDCAD";
+      if (clean.includes("eurgbp") || clean.includes("eur_gbp")) return "EURGBP";
+      if (clean.includes("gbpjpy") || clean.includes("gbp_jpy")) return "GBPJPY";
+      if (clean.includes("nzdusd") || clean.includes("nzd_usd")) return "NZDUSD";
+      if (clean.includes("xauusd") || clean.includes("xau_usd") || clean.includes("gold") || clean.includes("xau")) return "XAUUSD";
+      if (clean.includes("xagusd") || clean.includes("xag_usd") || clean.includes("silver") || clean.includes("xag")) return "XAGUSD";
+      if (clean.includes("btcusd") || clean.includes("btc_usd") || clean.includes("btc") || clean.includes("bitcoin")) return "BTCUSD";
+      if (clean.includes("ethusd") || clean.includes("eth_usd") || clean.includes("eth") || clean.includes("ethereum")) return "ETHUSD";
+      return null;
+    };
+
+    try {
+      let data: any = null;
+      let success = false;
+
+      try {
+        const response = await fetch("/api/detect-symbol-timeframe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            image: base64Image,
+            userApiKey: userGeminiKey,
+            filename: fileName,
+            activeSymbol: activeMarketAsset?.pair || "EUR/USD"
+          })
+        });
+
+        if (response.status === 429) {
+          const errData = await response.json().catch(() => ({}));
+          if (errData.error === "SHARED_KEYS_EXHAUSTED") {
+            setIsKeyPoolExhausted(true);
+            setCurrentPage("keys");
+            setAnalysisLogs((prev) => [
+              ...prev,
+              "⚠️ Auto-detection halted: Shared developer API allotment completed.",
+              "Override active. Provide your own Free Gemini Key below to bypass and scan instantly."
+            ]);
+            setIsDetectingSymbol(false);
+            return;
+          }
+        }
+
+        if (response.ok) {
+          data = await response.json();
+          success = true;
+        }
+      } catch (serverErr) {
+        console.warn("Server detect-symbol-timeframe failed, relying on direct client-side fallback:", serverErr);
+      }
+
+      // Safe Fallback: Direct client-side visual detection using the user's Gemini Key!
+      if (!success) {
+        if (!userGeminiKey || !userGeminiKey.trim() || userGeminiKey.startsWith("GEMINI_API_KEY_DEMO_HOLDER") || userGeminiKey.trim() === "DEMO_KEY") {
+          // No user key or demo key -> run heuristic detection
+          const fileMatch = detectSymbolFromFilename(fileName);
+          data = {
+            symbol: fileMatch || activeMarketAsset?.pair || "EUR/USD",
+            timeframe: "1H",
+            confidence: "Offline heuristic layout. Enter a personal Gemini Key to unlock high-fidelity AI asset auto-detection."
+          };
+        } else {
+          const match = base64Image.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1];
+            const base64Data = match[2];
+            const fileMatch = detectSymbolFromFilename(fileName);
+
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
+            const geminiRes = await fetch(geminiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType,
+                        data: base64Data
+                      }
+                    },
+                    {
+                      text: `Analyze this chart screenshot and identify:
+1. The asset symbol / ticker / currency pair (e.g. "EURUSD", "BTCUSD", "AAPL", "XAUUSD", "GBPUSD", "ETHUSD"). Look at the titles, headers, watermarks or axis. Return clean upper-case letters without slashes if possible (e.g., "EURUSD" instead of "EUR/USD", "BTCUSD" instead of "BTC/USD"). ${fileMatch ? `Note: filename hints suggest this is likely ${fileMatch}` : ''}
+2. The current active timeframe of the chart (e.g., "5m", "15m", "1h", "4h", "1d", "D"). Look for indicators, headers or timeframe select boxes highlighted on the screen.
+3. A short confidence statement explaining how confident you are in this detection.
+
+Return your findings in the requested JSON structure. No markdown formatting.`
+                    }
+                  ]
+                }],
+                generationConfig: {
+                  responseMimeType: "application/json",
+                  responseSchema: {
+                    type: "OBJECT",
+                    properties: {
+                      symbol: { type: "STRING" },
+                      timeframe: { type: "STRING" },
+                      confidence: { type: "STRING" }
+                    },
+                    required: ["symbol", "timeframe", "confidence"]
+                  }
+                }
+              })
+            });
+
+            if (geminiRes.ok) {
+              const resData = await geminiRes.json();
+              const textContent = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+              data = JSON.parse(textContent);
+              if (fileMatch && (!data.symbol || data.symbol === "EURUSD" || data.symbol.toUpperCase().includes("CAD"))) {
+                data.symbol = fileMatch;
+              }
+            } else {
+              throw new Error(`Google API returned status code ${geminiRes.status}`);
+            }
+          }
         }
       }
 
-      if (response.ok) {
-        const data = await response.json();
+      if (data) {
         if (data.symbol) {
-          // Normalize symbol (remove slashes, dashes, spaces)
           const cleanSymbol = data.symbol.replace(/[\/\s-]/g, "").toUpperCase();
           setDetectedSymbol(cleanSymbol);
         }
@@ -678,47 +812,193 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
         "Transmitting prompt context to secure AI vision parser..."
       ]);
 
-      const response = await fetch("/api/analyze-chart", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          image: uploadedImage,
-          strategy: compositePrompt,
-          userApiKey: userGeminiKey,
-          symbol: detectedSymbol
-        }),
-        signal: controller.signal
-      });
+      let data: any = null;
+      let success = false;
+      let errPayload: any = null;
+
+      try {
+        const response = await fetch("/api/analyze-chart", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            image: uploadedImage,
+            strategy: compositePrompt,
+            userApiKey: userGeminiKey,
+            symbol: detectedSymbol
+          }),
+          signal: controller.signal
+        });
+
+        if (response.ok) {
+          data = await response.json();
+          success = true;
+        } else {
+          try {
+            errPayload = await response.json();
+          } catch (_) {
+            errPayload = {};
+          }
+          if (response.status === 429 || (errPayload && errPayload.error === "SHARED_KEYS_EXHAUSTED")) {
+            setIsKeyPoolExhausted(true);
+          }
+        }
+      } catch (serverErr) {
+        console.warn("Server analyze-chart failed, running direct client fallback with user custom key:", serverErr);
+      }
+
+      // Safe Fallback: Direct client-side Visual Analysis using the user's Gemini Key!
+      if (!success) {
+        if (!userGeminiKey || !userGeminiKey.trim() || userGeminiKey.startsWith("GEMINI_API_KEY_DEMO_HOLDER") || userGeminiKey.trim() === "DEMO_KEY") {
+          throw new Error(
+            (errPayload && (errPayload.details || errPayload.error)) || 
+            "A personal Gemini API Key is required to run visual trading analysis on Vercel. Please enter a valid key in the API Keys tab."
+          );
+        }
+
+        const match = uploadedImage.match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) {
+          throw new Error("Invalid image format received.");
+        }
+
+        const mimeType = match[1];
+        const base64Data = match[2];
+
+        setAnalysisLogs((prev) => [
+          ...prev,
+          "Bypassing offline server... Initiating direct high-stability browser API flow...",
+          "Authorizing client-side Secure Handshake direct query...",
+          "Analyzing visual candle dynamics and strategy rules directly via Gemini..."
+        ]);
+
+        const fullPrompt = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
+
+Core Rules:
+- Never give an immediate directional bias when a chart screenshot is uploaded.
+- Strictly follow the step-by-step process below.
+- Maintain analytical discipline and probabilistic thinking at all times.
+- Use precise, professional language. Avoid retail slang.
+- Before issuing any directional scenario, you MUST evaluate the overall quality of the setup by mathematically grading these six criteria from 0 to 100:
+  1. Market Structure Clarity
+  2. Liquidity Clarity
+  3. Timeframe Alignment
+  4. Institutional Confluence
+  5. Risk-to-Reward Quality
+  6. Entry Precision
+
+- STRICT CAPITAL PRESERVATION & "NO TRADE" POLICY:
+  If any of the following conditions exist:
+    * Conflicting timeframe bias
+    * Weak market structure
+    * Unclear liquidity targets
+    * Poor risk-to-reward ratio (below 1:2)
+    * Excessive volatility
+    * Choppy or ranging market conditions
+    * Missing institutional confluence
+    * Low confidence in chart interpretation (overall confidence score is below 60/100, unless exceptional confluence exists)
+  Then you MUST classify the setup as "NO TRADE". Do NOT force a bullish or bearish trade idea.
+  The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
+
+  When "NO TRADE" is triggered, you must:
+  1. Set the JSON "signal" attribute strictly to "NO TRADE" (it overrides BUY/SELL/HOLD).
+  2. Clearly state in the report why no trade should be taken.
+  3. Explain what conditions would improve the setup.
+  4. Identify key levels to monitor.
+  5. Describe what confirmation is required before considering any entry.
+
+Analysis Process:
+- STEP 1: Image Validation
+  Validate image quality. If the chart is blurry, cropped poorly, lacks axis labels, or is incomplete, politely request a clearer, higher-resolution version.
+- STEP 2: Chart Identification
+  Extract and state clearly: Trading pair / Instrument, timeframe, current last closed candle price.
+- STEP 3: Primary Chart Analysis (Uploaded Timeframe)
+  Analyze overall trend, support/resistance, liquidity zones, order blocks, FVG imbalances.
+- STEP 4: Higher-Timeframe Context
+  Evaluate multi-timeframe alignment of trend and momentum.
+
+STEP 7: Final Output Requirements
+After completing all steps, deliver a structured professional report with the following sections in your "reason" field in valid Markdown format:
+### 1. Chart Overview
+### 2. Key Observations
+### 3. Setup Quality Matrix (0-100 grading)
+### 4. Multi-Timeframe Analysis
+### 5. Trade Strategy Setup (Bullish/Bearish Scenarios or NO TRADE reasons)
+### 6. Overall Market Bias
+### 7. Confidence Score & Justification
+### 8. Risk Management & Capital Preservation Note
+
+You MUST formulate the output as a valid JSON object matching the schema below:
+- "signal": State the concluded Overall Market Bias (strictly one of BUY, SELL, or "NO TRADE").
+- "level": Recommended trigger level, current market entry price, or "N/A" if NO TRADE.
+- "tp": Target peak profit level, or "N/A" if NO TRADE.
+- "sl": Stop-loss level or "N/A" if NO TRADE.
+- "confidence": Percentage score (e.g., "55%").
+- "reason": The complete multi-line Markdown structured professional report formatted matching STEP 7.
+
+Supplied User Trade Logic Guidelines & Strategy context:
+"""
+${compositePrompt}
+"""
+`;
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
+        const geminiRes = await fetch(geminiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data
+                  }
+                },
+                {
+                  text: fullPrompt
+                }
+              ]
+            }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.0,
+              responseSchema: {
+                type: "OBJECT",
+                properties: {
+                  signal: { type: "STRING" },
+                  level: { type: "STRING" },
+                  tp: { type: "STRING" },
+                  sl: { type: "STRING" },
+                  confidence: { type: "STRING" },
+                  reason: { type: "STRING" }
+                },
+                required: ["signal", "level", "tp", "sl", "confidence", "reason"]
+              }
+            }
+          }),
+          signal: controller.signal
+        });
+
+        if (geminiRes.ok) {
+          const resData = await geminiRes.json();
+          const textContent = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+          data = JSON.parse(textContent);
+          success = true;
+        } else {
+          const mData = await geminiRes.json().catch(() => ({}));
+          const apiErrorMsg = mData?.error?.message || `Google API returned status code ${geminiRes.status}`;
+          throw new Error(apiErrorMsg);
+        }
+      }
 
       clearTimeout(timeoutId);
-
-      let errPayload: any = null;
-      if (!response.ok) {
-        try {
-          errPayload = await response.json();
-        } catch (_) {
-          errPayload = {};
-        }
-
-        if (response.status === 429 || (errPayload && errPayload.error === "SHARED_KEYS_EXHAUSTED")) {
-          setIsKeyPoolExhausted(true);
-        }
-
-        throw new Error(
-          (errPayload && (errPayload.details || errPayload.error)) || 
-          `Local backend exception (Status code ${response.status})`
-        );
-      }
 
       setAnalysisLogs((prev) => [
         ...prev,
         "Successfully received visual intelligence payload!",
         "Extracting payload parts and decoding strategy report..."
       ]);
-
-      const data = await response.json();
 
       // Resolve the actual text response securely from any wrapper envelope structures
       let responseText = "";
