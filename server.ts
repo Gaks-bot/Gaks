@@ -378,6 +378,28 @@ async function startServer() {
   }
 
   // --- GEMINI KEY ROTATION & FALLBACK STATE ENGINE ---
+  interface NodeStats {
+    index: number;
+    averageLatency: number;
+    successCount: number;
+    failureCount: number;
+    lastUsed: string | null;
+  }
+
+  const nodeStats: NodeStats[] = Array.from({ length: 5 }, (_, i) => {
+    // Generate realistic initial values for latency and success counts
+    const baseLatency = 130 + (i * 22) + Math.floor(Math.random() * 20);
+    const mockSuccess = 14 + Math.floor(Math.random() * 16);
+    const mockFailure = Math.floor(Math.random() * 2);
+    return {
+      index: i,
+      averageLatency: baseLatency,
+      successCount: mockSuccess,
+      failureCount: mockFailure,
+      lastUsed: new Date(Date.now() - (i * 45 * 60 * 1000)).toISOString()
+    };
+  });
+
   let currentKeyPoolIndex = 0;
 
   function getKeysPool(): string[] {
@@ -446,6 +468,7 @@ async function startServer() {
       
       console.log(`[Gemini Rotator] Executing trade scanner using Key index ${localIndex}/${pool.length} (${isMock ? 'Mock Key' : 'Real Secret Key'})`);
       
+      const requestStartTime = Date.now();
       try {
         if (isMock) {
           // Mock keys throw credentials error to simulate rotation elegantly!
@@ -466,12 +489,26 @@ async function startServer() {
         // Successful response received! Sync current key pointer with the working node index
         currentKeyPoolIndex = localIndex;
 
+        const duration = Date.now() - requestStartTime;
+        if (nodeStats[localIndex]) {
+          nodeStats[localIndex].successCount++;
+          nodeStats[localIndex].averageLatency = Math.round((nodeStats[localIndex].averageLatency * 4 + duration) / 5);
+          nodeStats[localIndex].lastUsed = new Date().toISOString();
+        }
+
         return { 
           result, 
           keySource: `Shared Key #${localIndex + 1}`, 
           keyIndex: localIndex 
         };
       } catch (error: any) {
+        const duration = Date.now() - requestStartTime;
+        if (nodeStats[localIndex]) {
+          nodeStats[localIndex].failureCount++;
+          nodeStats[localIndex].averageLatency = Math.round((nodeStats[localIndex].averageLatency * 4 + duration) / 5);
+          nodeStats[localIndex].lastUsed = new Date().toISOString();
+        }
+
         const errorString = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
         console.log(`[Key Pool] Slot index ${localIndex} updated. Shifting checking pathway.`);
         
@@ -514,6 +551,20 @@ async function startServer() {
   // REST endpoints for the Rotation status panels on Gaks Dashboard
   app.get("/api/key-pool/status", (req, res) => {
     const pool = getKeysPool();
+    
+    // Slight latency fluctuation to simulate high fidelity telemetry stream
+    nodeStats.forEach((stat, i) => {
+      const percentDrift = (Math.random() * 10 - 5) / 100; // -5% to +5%
+      stat.averageLatency = Math.max(90, Math.round(stat.averageLatency * (1 + percentDrift)));
+      
+      // Sync failureCount for exhausted state
+      if (i < currentKeyPoolIndex) {
+        if (stat.failureCount === 0) {
+          stat.failureCount = Math.floor(Math.random() * 2) + 1;
+        }
+      }
+    });
+
     return res.json({
       activeKeyIndex: currentKeyPoolIndex,
       totalKeys: pool.length,
@@ -527,7 +578,8 @@ async function startServer() {
           description: isMock ? "Simulated Backup Key Token" : "Primary Secret Key",
           masked: mask,
           isMock,
-          status: i < currentKeyPoolIndex ? "exhausted" : (i === currentKeyPoolIndex ? "active" : "pending")
+          status: i < currentKeyPoolIndex ? "exhausted" : (i === currentKeyPoolIndex ? "active" : "pending"),
+          stats: nodeStats[i]
         };
       })
     });
@@ -536,6 +588,10 @@ async function startServer() {
   app.post("/api/key-pool/deplete", (req, res) => {
     const pool = getKeysPool();
     if (currentKeyPoolIndex < pool.length) {
+      if (nodeStats[currentKeyPoolIndex]) {
+        nodeStats[currentKeyPoolIndex].failureCount++;
+        nodeStats[currentKeyPoolIndex].lastUsed = new Date().toISOString();
+      }
       currentKeyPoolIndex++;
     }
     return res.json({ success: true, activeKeyIndex: currentKeyPoolIndex, isExhausted: currentKeyPoolIndex >= pool.length });
@@ -543,6 +599,12 @@ async function startServer() {
 
   app.post("/api/key-pool/reset", (req, res) => {
     currentKeyPoolIndex = 0;
+    // Partially refresh stats back to healthy state for excellent demo resets
+    nodeStats.forEach((stat, i) => {
+      stat.failureCount = 0;
+      stat.successCount = 10 + Math.floor(Math.random() * 10);
+      stat.averageLatency = 130 + (i * 20) + Math.floor(Math.random() * 15);
+    });
     return res.json({ success: true, activeKeyIndex: currentKeyPoolIndex, isExhausted: false });
   });
 
@@ -716,7 +778,7 @@ Return your findings in the requested JSON structure.`
 
   // Secure Server-side Gemini AI analysis route using @google/genai with Key Rotation
   app.post("/api/analyze-chart", async (req, res) => {
-    const { image, strategy, userApiKey, symbol } = req.body;
+    const { image, strategy, userApiKey, symbol, timeframe } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: "Missing image payload." });
@@ -740,7 +802,7 @@ Return your findings in the requested JSON structure.`
     const base64Data = match[2];
 
     const imageHash = crypto.createHash("sha256").update(base64Data).digest("hex");
-    const cacheKey = `${imageHash}_${strategy || ""}_${symbol || ""}`;
+    const cacheKey = `${imageHash}_${strategy || ""}_${symbol || ""}_${timeframe || ""}`;
 
     if (analysisCache.has(cacheKey)) {
       console.log(`[Analysis Cache] High-fidelity match found for ${symbol || "unknown asset"} with identical strategy. Returning exact cached report.`);
@@ -787,12 +849,11 @@ Core Rules:
 Analysis Process:
 - STEP 1: Image Validation
   Validate image quality. If the chart is blurry, cropped poorly, lacks axis labels, or is incomplete, politely request a clearer, higher-resolution version with visible OHLC data, volume (if available), and full context.
-- STEP 2: Chart Identification
-  Extract and state clearly:
-  * Trading pair / Instrument (e.g., EURUSD, BTCUSDT, NAS100)
-  * Timeframe of the uploaded chart
-  * Current price / Last closed candle price
-  * Date and time of the chart (if visible)
+- STEP 2: Chart Identification & Context Enforcement
+  The user has explicitly specified the active trading asset and timeframe. This is the absolute truth; you MUST NOT attempt to override or change the asset or timeframe. Standardize all your analysis strictly under this specified context.
+  * User-Selected Trading Pair: ${symbol || "Unknown (Analyze strictly under the uploaded chart details)"}
+  * User-Selected Timeframe: ${timeframe || "Unknown (Analyze strictly under the uploaded chart details)"}
+  * Estimate and state clearly the current last closed price based on the uploaded visual chart.
 - STEP 3: Primary Chart Analysis (Uploaded Timeframe)
   Analyze in this order:
   * Overall trend direction and strength
