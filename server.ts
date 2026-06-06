@@ -965,9 +965,12 @@ ${strategy || 'General Smart Money Concepts, Multi-Timeframe Alignment and Liqui
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
+  return app;
 }
 
-startServer();
+export const appPromise = startServer();
