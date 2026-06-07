@@ -937,7 +937,15 @@ You MUST formulate the output as a valid JSON object matching the schema below:
 - "confidence": Percentage score (e.g., "55%").
 - "reason": The complete multi-line Markdown structured professional report formatted matching STEP 7.
 
-Note: Ensure your TP/SL/Entry numeric prices align logically relative to the signal direction if active.
+STRICT MT5-COMPLIANT LEVEL RULES (CRITICAL):
+1. For BUY signal: "tp" MUST be mathematically higher than "level" (TP > level), and "sl" MUST be mathematically lower than "level" (SL < level).
+2. For SELL signal: "tp" MUST be mathematically lower than "level" (TP < level), and "sl" MUST be mathematically higher than "level" (SL > level).
+3. MINIMUM STOP DISTANCE: S/L and T/P levels must be placed at least 15 pips (150 points) away from the entry "level" to prevent failing MetaTrader broker internal "Stop Level" checks (which reject tight prices as "Invalid S/L or T/P").
+4. COHERENT DECIMAL PRECISION: Round all price values ("level", "tp", "sl") to match standard MT5 contract digits depending on asset class:
+   - Standard Forex (EURUSD, GBPUSD, AUDUSD, etc.): Exactly 5 decimal places (e.g., 1.08250)
+   - JPY Forex Pairs (USDJPY, EURJPY, etc.): Exactly 3 decimal places (e.g., 156.420)
+   - Crypto Pairs (BTCUSD, ETHUSD): Exactly 2 decimal places (e.g., 68450.50)
+   - Indices/Commodities (Gold, US30, GER40): Exactly 2 decimal places (e.g., 2355.80, 39120.40)
 
 Supplied User Trade Logic Guidelines & Strategy context:
 """
