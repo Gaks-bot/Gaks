@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { supabase } from "./supabaseClient";
+import { AuthScreen } from "./components/AuthScreen";
 
 // Local node API config
 const LOCAL_API_URL = "/api";
@@ -322,6 +324,54 @@ const TIMEFRAMES = [
 export default function App() {
   // General layout / page routing - original default page was "market"
   const [currentPage, setCurrentPage] = useState<string>("market");
+
+  // Supabase Auth and Email configuration state setup
+  const [session, setSession] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authView, setAuthView] = useState<"login" | "signup" | "forgot_password" | "reset_password">("login");
+  const [authEmail, setAuthEmail] = useState<string>("");
+  const [authFullName, setAuthFullName] = useState<string>("");
+  const [authPassword, setAuthPassword] = useState<string>("");
+  const [authConfirmPassword, setAuthConfirmPassword] = useState<string>("");
+  const [authError, setAuthError] = useState<string>("");
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string>("");
+  const [authActionLoading, setAuthActionLoading] = useState<boolean>(false);
+
+  // Profile dropdown active status helper state
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState<boolean>(false);
+
+  // Check and listen for active Supabase user sessions
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setAuthLoading(false);
+
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthView("reset_password");
+      } else if (event === "SIGNED_IN") {
+        if (window.location.pathname !== "/") {
+          window.history.pushState(null, "", "/");
+        }
+        setCurrentPage("market");
+        setAuthError("");
+        setAuthSuccessMsg("");
+      } else if (event === "SIGNED_OUT") {
+        setCurrentPage("market");
+        setAuthView("login");
+        setAuthError("");
+        setAuthSuccessMsg("");
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
   
   // Complete list of 13 initial market pairs
   const [marketPairs, setMarketPairs] = useState<MarketPair[]>([
@@ -345,6 +395,174 @@ export default function App() {
   const [selectedStrategyIndex, setSelectedStrategyIndex] = useState<number>(0);
   const [isSaved, setIsSaved] = useState<boolean>(true);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string>("Strategy Synced ✓");
+
+  // Authentication Handlers to manage user session lifecycle via Supabase
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSuccessMsg("");
+    
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setAuthError("Email and Password fields are required.");
+      return;
+    }
+    
+    if (authPassword.length < 6) {
+      setAuthError("Password must be at least 6 characters.");
+      return;
+    }
+    
+    if (authPassword !== authConfirmPassword) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+    
+    setAuthActionLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: authEmail.trim(),
+        password: authPassword,
+        options: {
+          emailRedirectTo: window.location.origin,
+          data: {
+            full_name: authFullName.trim(),
+          },
+        },
+      });
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        if (data.user && !data.session) {
+          setAuthSuccessMsg("Registration successful! Check your email inbox to confirm your email address and verify this profile.");
+        } else {
+          setAuthSuccessMsg("Account created successfully!");
+          if (window.location.pathname !== "/") {
+            window.history.pushState(null, "", "/");
+          }
+          setCurrentPage("market");
+        }
+        setAuthPassword("");
+        setAuthConfirmPassword("");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An error occurred during authentication.");
+    } finally {
+      setAuthActionLoading(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSuccessMsg("");
+    
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setAuthError("Email and Password fields are required.");
+      return;
+    }
+    
+    setAuthActionLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: authEmail.trim(),
+        password: authPassword,
+      });
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setAuthSuccessMsg("Signed in successfully!");
+        setAuthEmail("");
+        setAuthPassword("");
+        if (window.location.pathname !== "/") {
+          window.history.pushState(null, "", "/");
+        }
+        setCurrentPage("market");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An error occurred during login.");
+    } finally {
+      setAuthActionLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSuccessMsg("");
+    
+    if (!authEmail.trim()) {
+      setAuthError("Email address is required.");
+      return;
+    }
+    
+    setAuthActionLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(authEmail.trim(), {
+        redirectTo: window.location.origin,
+      });
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setAuthSuccessMsg("Dispatched! If this email corresponds to a registered profile, a secure recovery link will arrive in your inbox shortly.");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An unexpected error occurred during password recovery.");
+    } finally {
+      setAuthActionLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSuccessMsg("");
+    
+    if (!authPassword.trim()) {
+      setAuthError("Please enter a new password.");
+      return;
+    }
+    
+    if (authPassword.length < 6) {
+      setAuthError("Password must be at least 6 characters.");
+      return;
+    }
+    
+    if (authPassword !== authConfirmPassword) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+    
+    setAuthActionLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: authPassword,
+      });
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setAuthSuccessMsg("Success! Your password was updated. Redirecting to sign in option...");
+        setTimeout(() => {
+          setAuthView("login");
+          setAuthPassword("");
+          setAuthConfirmPassword("");
+          setAuthSuccessMsg("");
+        }, 3000);
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An unexpected error occurred during password update.");
+    } finally {
+      setAuthActionLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setProfileDropdownOpen(false);
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("Sign out failure:", err);
+    }
+  };
 
   // Handler for custom strategies updates
   const handleStrategyChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1991,16 +2209,94 @@ Risk Reminder: ${riskReminder}`;
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[95vh] p-4 text-center text-neutral-100 font-sans">
+        <div className="h-10 w-10 rounded-xl border-2 border-emerald-500 animate-spin mb-4" />
+        <p className="text-xs text-neutral-400 font-mono tracking-wide uppercase">Establishing secure connection stream...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <AuthScreen
+        authView={authView}
+        setAuthView={setAuthView}
+        authEmail={authEmail}
+        setAuthEmail={setAuthEmail}
+        authFullName={authFullName}
+        setAuthFullName={setAuthFullName}
+        authPassword={authPassword}
+        setAuthPassword={setAuthPassword}
+        authConfirmPassword={authConfirmPassword}
+        setAuthConfirmPassword={setAuthConfirmPassword}
+        authError={authError}
+        setAuthError={setAuthError}
+        authSuccessMsg={authSuccessMsg}
+        setAuthSuccessMsg={setAuthSuccessMsg}
+        authActionLoading={authActionLoading}
+        handleSignUp={handleSignUp}
+        handleLogin={handleLogin}
+        handleForgotPassword={handleForgotPassword}
+        handleUpdatePassword={handleUpdatePassword}
+      />
+    );
+  }
+
   return (
     <div>
       {/* Header Top Container */}
-      <div className="header-top">
-        <span>Gaks Ai</span>
-        <i
-          className="ph ph-sign-out logout-icon"
-          title="Reset Session Data"
-          onClick={handleResetApplicationState}
-        />
+      <div className="header-top relative flex justify-between items-center px-5 py-4 border-b border-neutral-900 bg-neutral-950">
+        <span className="font-bold tracking-tight text-white flex items-center gap-2 select-none">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
+          Gaks Ai
+        </span>
+        
+        {/* Profile Dropdown displaying User email & Logout button */}
+        <div className="relative flex items-center">
+          <button 
+            onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+            className="flex items-center gap-2 bg-neutral-900 hover:bg-[#1a1a1a] border border-neutral-800 text-neutral-200 text-[11px] px-3 py-1.5 rounded-lg select-none cursor-pointer transition-colors font-sans font-semibold outline-none"
+          >
+            <i className="ph ph-user text-emerald-400 text-sm" />
+            <span className="max-w-[110px] truncate">{session.user?.email}</span>
+            <i className={`ph ph-caret-down text-[10px] transition-transform ${profileDropdownOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {profileDropdownOpen && (
+            <>
+              {/* Back backdrop to dismiss dropdown */}
+              <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setProfileDropdownOpen(false)} />
+              
+              <div className="absolute right-0 top-full mt-2 w-56 bg-[#151821] border border-neutral-800 rounded-xl shadow-[0_10px_35px_rgba(0,0,0,0.95)] z-50 py-2 animate-fadeIn text-left">
+                <div className="px-4 py-2.5 border-b border-neutral-850">
+                  {session.user?.user_metadata?.full_name && (
+                    <span className="text-xs font-semibold text-white block truncate mb-1" title={session.user.user_metadata.full_name}>
+                      {session.user.user_metadata.full_name}
+                    </span>
+                  )}
+                  <span className="text-[10px] uppercase tracking-wider text-neutral-500 block font-mono font-bold leading-none mb-1">
+                    Authenticated User
+                  </span>
+                  <span className="text-xs text-neutral-400 block truncate font-sans" title={session.user?.email}>
+                    {session.user?.email}
+                  </span>
+                </div>
+                
+                <div className="p-1">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2.5 text-rose-400 hover:text-white hover:bg-rose-950/25 px-3 py-2 rounded-lg text-xs font-semibold transition-all bg-transparent border-none text-left cursor-pointer font-sans"
+                  >
+                    <i className="ph ph-sign-out text-sm" />
+                    <span>Logout Account</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="container">
@@ -3775,11 +4071,11 @@ Risk Reminder: ${riskReminder}`;
         <div id="keys" className={`page ${currentPage === "keys" ? "active" : ""}`}>
           <div className="flex flex-col gap-1 mb-6">
             <h2 className="text-xl font-bold tracking-tight text-white m-[0px] flex items-center gap-2">
-              <i className="ph ph-sliders text-emerald-400" />
-              API Cluster Console
+              <i className="ph ph-heartbeat text-emerald-400" />
+              Key Health Status
             </h2>
             <p className="text-[11px] text-neutral-500 m-[0px] font-sans">
-              Manage failover credentials, test handshake parameters, and customize visual intelligence keys.
+              Check your personal key connection, monitor active backup status, and view basic key statistics.
             </p>
           </div>
 
@@ -3787,17 +4083,17 @@ Risk Reminder: ${riskReminder}`;
             {/* Quick KPI stats row */}
             <div className="grid grid-cols-2 gap-3 font-sans">
               <div className="card p-3 border border-neutral-800/60 bg-neutral-950/20 rounded-xl">
-                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Active Cluster</span>
+                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Active Status</span>
                 <span className="text-sm font-bold text-neutral-100 flex items-center gap-1.5 font-mono">
-                  <span className={`h-2 w-2 rounded-full ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-500 animate-pulse" : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"}`} />
-                  {userGeminiKey ? "User Direct" : isKeyPoolExhausted ? "DEPLETED" : "FAILS SAFE"}
+                  <span className={`h-2 w-2 rounded-full ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-500" : "bg-emerald-500 animate-pulse"}`} />
+                  {userGeminiKey ? "Private Active" : isKeyPoolExhausted ? "All depleted" : "Backup active"}
                 </span>
               </div>
               <div className="card p-3 border border-neutral-800/60 bg-neutral-950/20 rounded-xl">
-                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Failover Coverage</span>
+                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Backup Servers</span>
                 <span className="text-sm font-bold text-neutral-100 flex items-center gap-1.5 font-mono">
-                  <i className="ph ph-shield-check text-emerald-400 text-sm" />
-                  {userGeminiKey ? "Unlimited" : isKeyPoolExhausted ? "0 Nodes Live" : `${keyPoolStatus?.keys.filter(k => k.status !== "exhausted").length || 0} / 5 Backup`}
+                  <i className="ph ph-cloud-check text-emerald-400 text-sm" />
+                  {userGeminiKey ? "Optional" : isKeyPoolExhausted ? "0 Active" : `${keyPoolStatus?.keys.filter(k => k.status !== "exhausted").length || 0} Ready`}
                 </span>
               </div>
             </div>
@@ -3807,7 +4103,7 @@ Risk Reminder: ${riskReminder}`;
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-2 leading-none font-sans">
                   <i className="ph ph-key text-amber-500" />
-                  Personal Override Key
+                  Personal API Key
                 </h3>
                 <a
                   href="https://aistudio.google.com/"
@@ -3820,7 +4116,7 @@ Risk Reminder: ${riskReminder}`;
               </div>
 
               <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
-                By entering a personal Gemini API key, you bypass public fallback limits. Your key remains stored locally on your device.
+                By setting a personal Gemini key, you unlock unlimited high-speed trading analysis. Your key stays stored securely on your browser.
               </p>
 
               <div className="space-y-3 font-sans">
@@ -3832,14 +4128,13 @@ Risk Reminder: ${riskReminder}`;
                       handleUserKeyChange(e.target.value);
                       setKeyTestResult(null);
                     }}
-                    placeholder="Enter your Gemini AI Studio API key..."
+                    placeholder="Paste Gemini API key here..."
                     className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-lg pr-10 outline-none focus:border-neutral-600 font-mono transition-colors"
                   />
                   <button
                     type="button"
                     onClick={() => setShowUserKeyPassword(!showUserKeyPassword)}
                     className="absolute right-3.5 text-neutral-500 hover:text-neutral-350 transition-colors"
-                    title={showUserKeyPassword ? "Hide API Key" : "Show API Key"}
                   >
                     <i className={`ph ${showUserKeyPassword ? "ph-eye-slash" : "ph-eye"} text-sm`} />
                   </button>
@@ -3849,17 +4144,17 @@ Risk Reminder: ${riskReminder}`;
                   <button
                     onClick={handleTestUserKey}
                     disabled={isTestingKey || !userGeminiKey.trim()}
-                    className="flex-1 bg-neutral-900 hover:bg-neutral-800/80 border border-neutral-800 hover:border-neutral-700 text-neutral-300 text-xs py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all select-none font-medium font-sans disabled:opacity-45 disabled:cursor-not-allowed"
+                    className="flex-1 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 text-xs py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all select-none font-medium font-sans disabled:opacity-45 disabled:cursor-not-allowed"
                   >
                     {isTestingKey ? (
                       <>
-                        <i className="ph ph-arrow-clockwise animate-spin" />
-                        <span>Testing handshakes...</span>
+                        <i className="ph ph-circle-notch animate-spin text-neutral-400" />
+                        <span>Checking connection...</span>
                       </>
                     ) : (
                       <>
-                        <i className="ph ph-pulse" />
-                        <span>Test Key Handshake</span>
+                        <i className="ph ph-activity" />
+                        <span>Check Key Connection</span>
                       </>
                     )}
                   </button>
@@ -3870,8 +4165,8 @@ Risk Reminder: ${riskReminder}`;
                         handleUserKeyChange("");
                         setKeyTestResult(null);
                       }}
-                      className="bg-neutral-905 hover:bg-neutral-800/80 border border-neutral-800 text-neutral-400 hover:text-white px-3 py-2.5 rounded-lg flex items-center justify-center transition-all"
-                      title="Clear custom override key"
+                      className="bg-neutral-905 border border-neutral-800 text-neutral-400 hover:text-white px-3 py-2.5 rounded-lg flex items-center justify-center transition-all"
+                      title="Remove key"
                     >
                       <i className="ph ph-x text-xs" />
                     </button>
@@ -3880,9 +4175,9 @@ Risk Reminder: ${riskReminder}`;
 
                 {keyTestResult && (
                   <div className={`p-3 rounded-xl border flex items-start gap-2.5 animate-fadeIn ${keyTestResult.success ? "bg-emerald-950/20 border-emerald-500/20 text-emerald-300" : "bg-rose-950/20 border-rose-500/20 text-rose-300"}`}>
-                    <i className={`ph ${keyTestResult.success ? "ph-shield-check text-emerald-400" : "ph-warning-octagon text-rose-400"} text-base mt-0.5`} />
+                    <i className={`ph ${keyTestResult.success ? "ph-check-circle" : "ph-x-circle"} text-base mt-0.5`} />
                     <div className="text-[11px] leading-relaxed">
-                      <span className="font-semibold block mb-0.5">{keyTestResult.success ? "Handshake Succeeded" : "Handshake Failed"}</span>
+                      <span className="font-semibold block mb-0.5">{keyTestResult.success ? "Connection success" : "Connection failed"}</span>
                       {keyTestResult.message}
                     </div>
                   </div>
@@ -3893,11 +4188,11 @@ Risk Reminder: ${riskReminder}`;
             {/* Panel 2: Live Cluster Status Board */}
             <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
               <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-2 mb-3 leading-none font-sans">
-                <i className="ph ph-arrows-clockwise text-emerald-400" />
-                Network Failover Pool
+                <i className="ph ph-cloud-slash text-emerald-400" />
+                Backup Network Status
               </h3>
               <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
-                Our local backend manages 5 shared backup keys. In case of developer quota exhausted or HTTP 429 limits, requests are auto-routed to active standbys.
+                Our backup system maintains 5 reserve servers. If standard rate limits are met, analyses auto-route with zero interruptions.
               </p>
 
               {keyPoolStatus && (
@@ -3905,18 +4200,17 @@ Risk Reminder: ${riskReminder}`;
                   {keyPoolStatus.keys.map((k) => (
                     <div key={k.index} className="flex justify-between items-center border-b border-neutral-900/40 py-1.5 last:border-0 last:pb-0 first:pt-0">
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-rose-500 animate-pulse' : k.status === 'active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-neutral-600'}`} />
-                        <span className="text-neutral-300 font-medium">Node #{k.index + 1}</span>
+                        <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-red-500' : k.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-600'}`} />
+                        <span className="text-neutral-300 font-medium">Backup #{k.index + 1}</span>
                         <span className="text-neutral-600 text-[10px] inline-block max-w-[120px] truncate">{k.masked}</span>
-                        {k.isMock && <span className="bg-neutral-900 text-neutral-500 text-[8px] px-1.5 py-0.5 rounded border border-neutral-800 flex items-center">MOCK</span>}
                       </div>
                       <div>
                         {k.status === "active" ? (
-                          <span className="text-emerald-400 font-bold uppercase text-[9px] bg-emerald-950/50 border border-emerald-500/20 px-1.5 py-0.5 rounded">ACTIVE CLIENT</span>
+                          <span className="text-emerald-400 font-bold uppercase text-[9px] bg-emerald-950/50 border border-emerald-500/20 px-1.5 py-0.5 rounded">Active Standby</span>
                         ) : k.status === "exhausted" ? (
-                          <span className="text-rose-500 text-[9px] font-bold uppercase bg-rose-950/50 border border-rose-500/10 px-1.5 py-0.5 rounded">DEPLETED</span>
+                          <span className="text-red-500 text-[9px] font-bold uppercase bg-rose-950/50 border border-red-500/10 px-1.5 py-0.5 rounded">Paused</span>
                         ) : (
-                          <span className="text-neutral-500 text-[9px] uppercase bg-neutral-900/60 border border-neutral-850 px-1.5 py-0.5 rounded">STANDBY</span>
+                          <span className="text-neutral-500 text-[9px] uppercase bg-neutral-900/60 border border-neutral-850 px-1.5 py-0.5 rounded">Standby</span>
                         )}
                       </div>
                     </div>
@@ -3928,17 +4222,15 @@ Risk Reminder: ${riskReminder}`;
                 <button
                   onClick={handleDepleteKey}
                   disabled={isKeyPoolExhausted || !!userGeminiKey}
-                  className="bg-neutral-900 border border-neutral-800 hover:border-red-900/60 hover:bg-rose-950/20 text-neutral-400 hover:text-red-400 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all disabled:opacity-40 select-none uppercase"
-                  title="Forcibly complete allotment of current active key to move rotation index"
+                  className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 hover:text-white text-neutral-400 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all disabled:opacity-40 select-none uppercase pointer-events-auto"
                 >
-                  Deplete Active Node
+                  Skip active server
                 </button>
                 <button
                   onClick={handleResetKeyPool}
-                  className="bg-neutral-900 border border-neutral-800 hover:border-neutral-650 text-neutral-300 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all select-none uppercase"
-                  title="Reset rotation pool index back to zero"
+                  className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 text-neutral-300 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all select-none uppercase"
                 >
-                  Reset Pool Nodes
+                  Reset backup pool
                 </button>
               </div>
             </div>
@@ -3947,58 +4239,58 @@ Risk Reminder: ${riskReminder}`;
             <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-2 m-0 leading-none font-sans">
-                  <i className="ph ph-pulse text-amber-500 animate-pulse text-sm" />
-                  Cluster Health & Telemetry
+                  <i className="ph ph-heartbeat text-amber-500 animate-pulse text-sm" />
+                  Key Speed & Metrics
                 </h3>
-                <span className={`text-[9px] uppercase font-mono tracking-wider ${userGeminiKey ? "bg-emerald-950/40 border-emerald-500/20 text-emerald-400" : "bg-neutral-900 border-neutral-800 text-neutral-500"} px-2.5 py-1 rounded-full flex items-center gap-1.5 leading-none`}>
+                <span className={`text-[9px] uppercase font-mono tracking-wider ${userGeminiKey ? "bg-emerald-950/40 text-emerald-400" : "bg-neutral-900 text-neutral-500"} px-2.5 py-1 rounded-full flex items-center gap-1.5 leading-none`}>
                   <span className={`h-1.5 w-1.5 ${userGeminiKey ? "bg-emerald-400 animate-ping" : "bg-neutral-600"} rounded-full`} />
-                  {userGeminiKey ? "Live Monitoring" : "Metrics Disabled"}
+                  {userGeminiKey ? "Live logs" : "Disabled"}
                 </span>
               </div>
 
               {!userGeminiKey.trim() ? (
                 <div className="p-6 text-center select-none bg-neutral-950/40 rounded-xl border border-neutral-900 flex flex-col items-center justify-center">
                   <div className="h-10 w-10 rounded-full bg-neutral-900 flex items-center justify-center border border-neutral-800/80 mb-3 text-neutral-500">
-                    <i className="ph ph-lock-key text-lg" />
+                    <i className="ph ph-lock text-lg" />
                   </div>
-                  <h4 className="text-xs font-semibold text-neutral-300 font-sans mb-1.5">Direct Telemetry Link Closed</h4>
+                  <h4 className="text-xs font-semibold text-neutral-300 font-sans mb-1.5">Logs restricted</h4>
                   <p className="text-[10px] text-neutral-500 font-sans leading-relaxed max-w-[280px] mb-4">
-                    The health & latency dashboard is restricted exclusively to personal override credentials. Provide a custom Gemini key in the form above to activate direct client telemetry.
+                    Analytics are shown specifically for your custom credential key. Provide an API key above to view live speed details.
                   </p>
                   <button
                     onClick={() => {
                       handleUserKeyChange("DEMO_KEY");
                       setKeyTestResult({ success: true, message: "Sandbox session initiated. Telemetry dashboard loaded successfully." });
                     }}
-                    className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white font-mono text-[9px] uppercase font-bold py-2 px-4 rounded-md transition-all flex items-center gap-1"
+                    className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-[9px] uppercase font-bold py-2 px-4 rounded-md transition-all flex items-center gap-1 cursor-pointer"
                   >
                     <i className="ph ph-plugs text-[11px]" />
-                    Activate Sandbox Demo Mode
+                    Load sandbox demo logs
                   </button>
                 </div>
               ) : (
                 <div className="space-y-5">
                   <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
-                    Real-time performance analytics, heartbeat latency profiles, and query results specifically for your inputted API credentials.
+                    Basic speed analytics and response logs for your personal key.
                   </p>
 
                   {/* Telemetry KPIs Overview */}
                   <div className="grid grid-cols-3 gap-2 font-mono text-[10px]">
                     <div className="bg-neutral-950/60 border border-neutral-900 rounded-lg p-2.5 text-center flex flex-col justify-between">
-                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1">Average Latency</span>
-                      <span className={`font-bold text-xs ${userKeyTelemetry.averageLatency > 1800 ? "text-rose-450" : userKeyTelemetry.averageLatency > 1300 ? "text-amber-450" : "text-emerald-405"}`}>
-                        {userKeyTelemetry.averageLatency || "---"} <span className="text-[8px] font-normal text-neutral-500">ms</span>
+                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Average Speed</span>
+                      <span className={`font-bold text-xs ${userKeyTelemetry.averageLatency > 1800 ? "text-red-400" : userKeyTelemetry.averageLatency > 1300 ? "text-amber-400" : "text-emerald-450"}`}>
+                        {userKeyTelemetry.averageLatency || "---"} <span className="text-[8px] font-normal text-neutral-500 font-sans">ms</span>
                       </span>
                     </div>
                     <div className="bg-neutral-950/60 border border-neutral-900 rounded-lg p-2.5 text-center flex flex-col justify-between">
-                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1">Total Transactions</span>
+                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Total Signals</span>
                       <span className="text-neutral-200 font-bold text-xs">
                         {userKeyTelemetry.totalRequests}
                       </span>
                     </div>
                     <div className="bg-neutral-950/60 border border-neutral-900 rounded-lg p-2.5 text-center flex flex-col justify-between">
-                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1">Uptime SLA</span>
-                      <span className="text-emerald-405 font-bold text-xs">
+                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Success SLA</span>
+                      <span className="text-emerald-400 font-bold text-xs">
                         {userKeyTelemetry.totalRequests > 0 
                           ? `${Math.round((userKeyTelemetry.successRequests / userKeyTelemetry.totalRequests) * 1000) / 10}%` 
                           : "100%"}
@@ -4011,40 +4303,39 @@ Risk Reminder: ${riskReminder}`;
                     <div className="flex justify-between items-center text-[10px] font-mono">
                       <div className="flex items-center gap-1.5">
                         <i className="ph ph-info text-amber-500" />
-                        <span className="text-neutral-400 text-[9px]">Credentials:</span>
-                        <span className="text-neutral-500 font-semibold uppercase">{userGeminiKey.substring(0, 8)}...{userGeminiKey.substring(Math.max(0, userGeminiKey.length - 4))}</span>
+                        <span className="text-neutral-400 text-[9px] font-sans">Credential:</span>
+                        <span className="text-neutral-500 font-semibold uppercase">{userGeminiKey.substring(0, 8)}...</span>
                       </div>
-                      <span className="text-neutral-600">Route: Direct Client Link</span>
+                      <span className="text-neutral-600 font-sans">Direct link status</span>
                     </div>
 
                     {/* Latency History Sparkline visualization */}
                     <div className="space-y-1">
-                      <div className="flex justify-between text-[9px] font-mono text-neutral-500">
-                        <span>HANDSHAKE LATENCY STREAM</span>
-                        <span>{userKeyTransactions.length > 0 ? "Last 12 Responses" : "No responses registered"}</span>
+                      <div className="flex justify-between text-[9px] font-mono text-neutral-500 font-sans">
+                        <span>CONNECTION LATENCY STREAM</span>
+                        <span>{userKeyTransactions.length > 0 ? "Last 12 checks" : "No checks recorded"}</span>
                       </div>
                       
                       <div className="h-10 bg-neutral-950/80 border border-neutral-900/60 rounded-lg flex items-end gap-[3px] p-1.5 px-2 justify-between">
                         {userKeyTransactions.length === 0 ? (
-                          <span className="text-[9px] text-neutral-600 font-mono w-full text-center py-2">Waiting for first heartbeat...</span>
+                          <span className="text-[9px] text-neutral-600 font-mono w-full text-center py-2 font-sans">Awaiting connection traffic...</span>
                         ) : (
                           [...userKeyTransactions].reverse().slice(-12).map((tx, idx) => {
-                            // Scale height from 10% to 100% based on latency (reference 2000ms max)
                             const heightPercent = Math.min(100, Math.max(10, (tx.latency / 2000) * 100));
                             let barBg = "bg-emerald-500/80 hover:bg-emerald-450";
                             if (tx.status === "FAILED") {
-                              barBg = "bg-rose-500/80 hover:bg-rose-450";
+                              barBg = "bg-red-500/80 hover:bg-red-450";
                             } else if (tx.latency > 1500) {
-                              barBg = "bg-rose-400/80 hover:bg-rose-300";
+                              barBg = "bg-red-400/80 hover:bg-red-350";
                             } else if (tx.latency > 1100) {
-                              barBg = "bg-amber-400/80 hover:bg-amber-300";
+                              barBg = "bg-amber-450";
                             }
                             return (
                               <div 
                                 key={tx.id || idx}
                                 style={{ height: `${heightPercent}%` }}
-                                className={`flex-1 rounded-sm ${barBg} transition-all duration-300 cursor-pointer`}
-                                title={`${tx.action}\nLatency: ${tx.latency}ms\nStatus: ${tx.status}`}
+                                className={`flex-1 rounded-sm ${barBg} transition-all duration-300`}
+                                title={`${tx.action} (${tx.latency}ms)`}
                               />
                             );
                           })
@@ -4056,17 +4347,17 @@ Risk Reminder: ${riskReminder}`;
                     <button
                       onClick={handleTestUserKey}
                       disabled={isTestingKey}
-                      className="w-full bg-neutral-900 border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-950 text-neutral-350 hover:text-white transition-all text-[10px] py-2 rounded-lg flex items-center justify-center gap-1.5 font-mono select-none"
+                      className="w-full bg-neutral-900 border border-neutral-800 hover:border-neutral-600 text-neutral-350 hover:text-white transition-all text-[10px] py-2 rounded-lg flex items-center justify-center gap-1.5 font-mono select-none"
                     >
                       {isTestingKey ? (
                         <>
-                          <i className="ph ph-arrow-clockwise animate-spin text-neutral-400" />
-                          <span>Streaming Heartbeat...</span>
+                          <i className="ph ph-circle-notch animate-spin text-neutral-400" />
+                          <span>Testing speed...</span>
                         </>
                       ) : (
                         <>
                           <i className="ph ph-activity text-emerald-400" />
-                          <span>Dispatch diagnostic Heartbeat Ping</span>
+                          <span>Check connection speed live</span>
                         </>
                       )}
                     </button>
@@ -4075,29 +4366,28 @@ Risk Reminder: ${riskReminder}`;
                   {/* Real-time Telemetry Transaction Feed Grid of recent calls */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-1">
-                      <i className="ph ph-table text-neutral-550 text-xs" />
-                      <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-450">Personal Health Logs Feed</span>
+                      <i className="ph ph-list text-neutral-550 text-xs" />
+                      <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-450 font-sans">Recent logs</span>
                     </div>
 
                     <div className="border border-neutral-900 bg-neutral-950/20 rounded-xl overflow-hidden text-[10px] font-mono divide-y divide-neutral-900">
                       {userKeyTransactions.length === 0 ? (
-                        <div className="text-center py-5 text-neutral-600">
-                          Awaiting client-to-cloud telemetry traffic...
+                        <div className="text-center py-5 text-neutral-600 font-sans">
+                          No logging traffic yet...
                         </div>
                       ) : (
                         userKeyTransactions.slice(0, 5).map((tx) => (
                           <div key={tx.id} className="p-2.5 flex justify-between items-center bg-neutral-950/10">
                             <div className="flex flex-col gap-0.5">
-                              <span className="text-neutral-300 font-semibold">{tx.action}</span>
-                              <span className="text-neutral-600 text-[8px]">{tx.timestamp} • {tx.endpoint}</span>
+                              <span className="text-neutral-300 font-semibold font-sans">{tx.action}</span>
+                              <span className="text-neutral-600 text-[8px]">{tx.timestamp}</span>
                             </div>
                             <div className="flex items-center gap-2.5 text-right">
-                              <div className="flex flex-col">
-                                <span className="text-neutral-400 font-bold">{tx.latency}ms</span>
-                                <span className="text-neutral-650 text-[8px]">{tx.payloadSize}</span>
+                              <div className="flex flex-col font-mono">
+                                <span className="text-neutral-450 font-bold">{tx.latency}ms</span>
                               </div>
-                              <span className={`px-1.5 py-0.5 text-[8px] font-extrabold uppercase rounded ${tx.status === "SUCCESS" ? "bg-emerald-950/80 text-emerald-400 border border-emerald-500/20" : "bg-rose-950/80 text-rose-400 border border-rose-500/20"}`}>
-                                {tx.status === "SUCCESS" ? "200 OK" : "ERR"}
+                              <span className={`px-1.5 py-0.5 text-[8px] font-bold uppercase rounded ${tx.status === "SUCCESS" ? "bg-emerald-950/80 text-emerald-400" : "bg-rose-950/80 text-red-400"}`}>
+                                {tx.status === "SUCCESS" ? "OK" : "ERR"}
                               </span>
                             </div>
                           </div>
