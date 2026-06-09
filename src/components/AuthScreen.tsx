@@ -113,12 +113,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   }, [authConfirmPassword, authPassword]);
 
   return (
-    <div className="flex flex-col justify-center items-center min-h-screen w-full px-4 py-8 bg-black text-white selection:bg-neutral-800 selection:text-white font-sans">
+    <div className="flex flex-col justify-center items-center min-h-screen w-full px-4 py-8 bg-[#0F0F0F] text-white selection:bg-white/10 selection:text-white font-sans">
       
       {/* Outer Branding Container */}
       <div className="text-center mb-6 flex flex-col items-center select-none animate-fadeIn">
         {/* Modern clean high contrast Gaks Logo Symbol */}
-        <div className="h-10 w-10 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white text-xl font-bold mb-3 shadow-[0_2px_15px_rgba(255,255,255,0.05)] hover:border-neutral-500 transition-all">
+        <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white text-xl font-bold mb-3 shadow-[0_2px_15px_rgba(255,255,255,0.02)] transition-all">
           G
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-white m-0">Gaks</h1>
@@ -133,22 +133,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       {/* Primary Authentication Card Container */}
       <div 
         id="auth-card"
-        className="w-full max-w-[420px] bg-neutral-950 border border-neutral-800 p-6 sm:p-8 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.9)] relative overflow-hidden transition-all duration-300"
+        className="w-full max-w-[420px] bg-[#0F0F0F] border border-white/10 p-6 sm:p-8 rounded-2xl relative overflow-hidden transition-all duration-300"
       >
         {/* Subtle accent line on top of card using specified neutral highlight */}
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-neutral-600 to-transparent" />
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/20" />
 
         {/* Modular Switchable Tabs (Only shown on Login and SignUp views) */}
         {(authView === "login" || authView === "signup") && (
-          <div className="flex w-full bg-black p-1 rounded-xl mb-6 border border-neutral-900">
+          <div className="flex w-full bg-white/5 p-1 rounded-xl mb-6 border border-white/5">
             <button
               type="button"
               id="tab-login-btn"
               onClick={() => switchTabs("login")}
               className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer ${
                 authView === "login"
-                  ? "bg-neutral-900 text-white shadow-sm font-bold border border-neutral-800"
-                  : "text-neutral-500 hover:text-neutral-300 bg-transparent"
+                  ? "bg-white/10 text-white shadow-sm font-bold border border-white/10"
+                  : "text-white/50 hover:text-white bg-transparent"
               }`}
             >
               Login
@@ -159,8 +159,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               onClick={() => switchTabs("signup")}
               className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer ${
                 authView === "signup"
-                  ? "bg-neutral-900 text-white shadow-sm font-bold border border-neutral-800"
-                  : "text-neutral-500 hover:text-neutral-300 bg-transparent"
+                  ? "bg-white/10 text-white shadow-sm font-bold border border-white/10"
+                  : "text-white/50 hover:text-white bg-transparent"
               }`}
             >
               Sign Up
@@ -172,22 +172,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {authError && (
           <div 
             id="auth-error-alert"
-            className="p-3.5 mb-5 rounded-xl border bg-neutral-900 border-neutral-800 text-rose-455 text-xs leading-relaxed animate-fadeIn"
+            className="p-3.5 mb-5 rounded-xl border border-white/15 bg-white/5 text-white/75 text-xs leading-relaxed animate-fadeIn"
           >
             <div className="flex items-start gap-2.5">
-              <i className="ph ph-warning-circle text-base mt-0.5 text-neutral-400 flex-shrink-0" />
+              <i className="ph ph-warning-circle text-base mt-0.5 text-white/50 flex-shrink-0" />
               <div>
                 <span className="font-bold block mb-0.5 text-white">Authentication Alert</span>
                 {authError}
               </div>
             </div>
             {(authError.toLowerCase().includes("hibernating") || authError.toLowerCase().includes("fetch") || authError.toLowerCase().includes("unreachable")) && (
-              <div className="mt-4 pt-3.5 border-t border-neutral-800 flex flex-col gap-2">
-                <p className="text-[10px] text-neutral-400 m-0">The remote authentication node is currently sleeping or offline. You can play or analyze instantly using our Offline Sandbox Engine:</p>
+              <div className="mt-4 pt-3.5 border-t border-white/10 flex flex-col gap-2">
+                <p className="text-[10px] text-white/50 m-0">The remote authentication node is currently sleeping or offline. You can play or analyze instantly using our Offline Sandbox Engine:</p>
                 <button
                   type="button"
                   onClick={onSandboxBypass}
-                  className="w-full h-10 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer transition-all border-none"
+                  className="w-full h-10 bg-white hover:bg-white/90 text-black font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer transition-all border-none"
                 >
                   <i className="ph ph-shield-check text-sm" />
                   <span>Bypass to Sandbox Session</span>
@@ -200,9 +200,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {authSuccessMsg && (
           <div 
             id="auth-success-alert"
-            className="p-3.5 mb-5 rounded-xl border bg-neutral-900 border-neutral-800 text-neutral-200 text-xs leading-relaxed flex items-start gap-2.5 animate-fadeIn"
+            className="p-3.5 mb-5 rounded-xl border border-white/15 bg-white/5 text-white/80 text-xs leading-relaxed flex items-start gap-2.5 animate-fadeIn"
           >
-            <i className="ph ph-check-circle text-base mt-0.5 text-neutral-400 flex-shrink-0" />
+            <i className="ph ph-check-circle text-base mt-0.5 text-white/50 flex-shrink-0" />
             <div>
               <span className="font-bold block mb-1 text-white">Operational Success</span>
               {authSuccessMsg}
@@ -214,7 +214,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {authView === "login" && (
           <form id="login-form" onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label htmlFor="login-email" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="login-email" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 Email address
               </label>
               <input
@@ -224,23 +224,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
                 placeholder="name@domain.com"
-                className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                className="w-full bg-white/5 border border-white/10 text-white text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                 disabled={authActionLoading}
               />
               {localEmailError && (
-                <span id="login-email-validation" className="text-[11px] text-rose-450 mt-1 block pl-0.5">{localEmailError}</span>
+                <span id="login-email-validation" className="text-[11px] text-white/70 mt-1 block pl-0.5">{localEmailError}</span>
               )}
             </div>
 
             <div>
               <div className="flex justify-between items-center mb-1.5 px-0.5">
-                <label htmlFor="login-password" className="text-xs text-neutral-400 font-medium">
+                <label htmlFor="login-password" className="text-xs text-white/50 font-medium">
                   Password
                 </label>
                 <button
                   type="button"
                   onClick={() => switchView("forgot_password")}
-                  className="text-xs text-neutral-400 hover:text-white transition-colors bg-transparent border-none p-0 cursor-pointer text-right outline-none hover:underline"
+                  className="text-xs text-white/55 hover:text-white transition-colors bg-transparent border-none p-0 cursor-pointer text-right outline-none hover:underline font-medium"
                   disabled={authActionLoading}
                 >
                   Forgot Password?
@@ -254,14 +254,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                   placeholder="Password"
-                  className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                  className="w-full bg-white/5 border border-white/10 text-white text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                   disabled={authActionLoading}
                 />
                 <button
                   type="button"
                   id="toggle-login-password"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
                   tabIndex={-1}
                 >
                   <i className={`ph ${showPassword ? "ph-eye-slash" : "ph-eye"} text-base`} />
@@ -273,7 +273,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               id="login-submit"
               type="submit"
               disabled={authActionLoading || !!localEmailError}
-              className="w-full h-11 bg-white hover:bg-neutral-200 disabled:bg-neutral-900 disabled:text-neutral-500 disabled:border disabled:border-neutral-800 text-black text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none border-none cursor-pointer mt-6"
+              className="w-full h-11 bg-white hover:opacity-90 disabled:bg-white/5 disabled:text-white/40 disabled:border disabled:border-white/10 text-black text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none border-none cursor-pointer mt-6"
             >
               {authActionLoading ? (
                 <>
@@ -289,23 +289,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </button>
 
             <div className="relative flex py-3 items-center">
-              <div className="flex-grow border-t border-neutral-900"></div>
-              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-neutral-600">OR</span>
-              <div className="flex-grow border-t border-neutral-900"></div>
+              <div className="flex-grow border-t border-white/10"></div>
+              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-white/50">OR</span>
+              <div className="flex-grow border-t border-white/10"></div>
             </div>
 
             <button
               type="button"
               onClick={onSandboxBypass}
-              className="w-full h-11 bg-transparent hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-emerald-400 text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="w-full h-11 bg-transparent hover:bg-white/5 border border-white/15 text-white text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
-              <i className="ph ph-shield-check text-sm animate-pulse" />
+              <i className="ph ph-shield-check text-sm" />
               <span>Enter Sandbox Mode (Skip Auth)</span>
             </button>
 
             {authError && (
-              <div id="login-form-error" className="mt-3 text-[11px] text-rose-400 font-medium text-center bg-rose-950/10 border border-rose-500/20 py-2 px-3 rounded-lg animate-fadeIn flex items-center justify-center gap-1.5">
-                <i className="ph ph-warning-circle text-[13px] text-rose-405 flex-shrink-0" />
+              <div id="login-form-error" className="mt-3 text-[11px] text-white/80 font-medium text-center bg-white/5 border border-white/10 py-2 px-3 rounded-lg animate-fadeIn flex items-center justify-center gap-1.5">
+                <i className="ph ph-warning-circle text-[13px] text-white/50 flex-shrink-0" />
                 <span>{authError}</span>
               </div>
             )}
@@ -315,7 +315,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {authView === "signup" && (
           <form id="signup-form" onSubmit={handleSignUp} className="space-y-4">
             <div>
-              <label htmlFor="signup-name" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="signup-name" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 Full Name
               </label>
               <input
@@ -325,13 +325,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 value={authFullName}
                 onChange={(e) => setAuthFullName(e.target.value)}
                 placeholder="Full Name"
-                className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                className="w-full bg-white/5 border border-white/10 text-white text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                 disabled={authActionLoading}
               />
             </div>
 
             <div>
-              <label htmlFor="signup-email" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="signup-email" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 Email address
               </label>
               <input
@@ -341,16 +341,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
                 placeholder="name@domain.com"
-                className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                className="w-full bg-white/5 border border-white/10 text-white text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                 disabled={authActionLoading}
               />
               {localEmailError && (
-                <span id="signup-email-validation" className="text-[11px] text-rose-455 mt-1 block pl-0.5">{localEmailError}</span>
+                <span id="signup-email-validation" className="text-[11px] text-white/70 mt-1 block pl-0.5">{localEmailError}</span>
               )}
             </div>
 
             <div>
-              <label htmlFor="signup-password" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="signup-password" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 Password
               </label>
               <div className="relative">
@@ -361,26 +361,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                   placeholder="At least 6 characters"
-                  className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                  className="w-full bg-white/5 border border-white/10 text-white text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                   disabled={authActionLoading}
                 />
                 <button
                   type="button"
                   id="toggle-signup-password"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
                   tabIndex={-1}
                 >
                   <i className={`ph ${showPassword ? "ph-eye-slash" : "ph-eye"} text-base`} />
                 </button>
               </div>
               {localPasswordError && (
-                <span id="signup-pass-validation" className="text-[11px] text-amber-500 mt-1 block pl-0.5">{localPasswordError}</span>
+                <span id="signup-pass-validation" className="text-[11px] text-white/70 mt-1 block pl-0.5">{localPasswordError}</span>
               )}
             </div>
 
             <div>
-              <label htmlFor="signup-confirm" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="signup-confirm" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 Confirm Password
               </label>
               <div className="relative">
@@ -391,21 +391,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   value={authConfirmPassword}
                   onChange={(e) => setAuthConfirmPassword(e.target.value)}
                   placeholder="Re-enter password"
-                  className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                  className="w-full bg-white/5 border border-white/10 text-white text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                   disabled={authActionLoading}
                 />
                 <button
                   type="button"
                   id="toggle-signup-confirm"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center animate-fadeIn"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center animate-fadeIn"
                   tabIndex={-1}
                 >
                   <i className={`ph ${showConfirmPassword ? "ph-eye-slash" : "ph-eye"} text-base`} />
                 </button>
               </div>
               {localConfirmError && (
-                <span id="signup-confirm-validation" className="text-[11px] text-rose-455 mt-1 block pl-0.5">{localConfirmError}</span>
+                <span id="signup-confirm-validation" className="text-[11px] text-white/70 mt-1 block pl-0.5">{localConfirmError}</span>
               )}
             </div>
 
@@ -413,7 +413,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               id="signup-submit"
               type="submit"
               disabled={authActionLoading || !!localEmailError || !!localPasswordError || !!localConfirmError}
-              className="w-full h-11 bg-white hover:bg-neutral-200 disabled:bg-neutral-900 disabled:text-neutral-500 disabled:border disabled:border-neutral-800 text-black text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none border-none cursor-pointer mt-6"
+              className="w-full h-11 bg-white hover:opacity-90 disabled:bg-white/5 disabled:text-white/40 disabled:border disabled:border-white/10 text-black text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed select-none border-none cursor-pointer mt-6"
             >
               {authActionLoading ? (
                 <>
@@ -429,23 +429,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </button>
 
             <div className="relative flex py-3 items-center">
-              <div className="flex-grow border-t border-neutral-900"></div>
-              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-neutral-600">OR</span>
-              <div className="flex-grow border-t border-neutral-900"></div>
+              <div className="flex-grow border-t border-white/10"></div>
+              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-white/50">OR</span>
+              <div className="flex-grow border-t border-white/10"></div>
             </div>
 
             <button
               type="button"
               onClick={onSandboxBypass}
-              className="w-full h-11 bg-transparent hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-emerald-400 text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="w-full h-11 bg-transparent hover:bg-white/5 border border-white/15 text-white text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
-              <i className="ph ph-shield-check text-sm animate-pulse" />
+              <i className="ph ph-shield-check text-sm" />
               <span>Enter Sandbox Mode (Skip Auth)</span>
             </button>
 
             {authError && (
-              <div id="signup-form-error" className="mt-3 text-[11px] text-rose-400 font-medium text-center bg-rose-950/10 border border-rose-500/20 py-2 px-3 rounded-lg animate-fadeIn flex items-center justify-center gap-1.5">
-                <i className="ph ph-warning-circle text-[13px] text-rose-405 flex-shrink-0" />
+              <div id="signup-form-error" className="mt-3 text-[11px] text-white/80 font-medium text-center bg-white/5 border border-white/10 py-2 px-3 rounded-lg animate-fadeIn flex items-center justify-center gap-1.5">
+                <i className="ph ph-warning-circle text-[13px] text-white/50 flex-shrink-0" />
                 <span>{authError}</span>
               </div>
             )}
@@ -455,7 +455,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {authView === "forgot_password" && (
           <form id="forgot-password-form" onSubmit={handleForgotPassword} className="space-y-4">
             <div>
-              <label htmlFor="forgot-email" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="forgot-email" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 Email address
               </label>
               <input
@@ -465,11 +465,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
                 placeholder="name@domain.com"
-                className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                className="w-full bg-white/5 border border-white/10 text-white text-xs px-3.5 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                 disabled={authActionLoading}
               />
               {localEmailError && (
-                <span className="text-[11px] text-rose-455 mt-1 block pl-0.5">{localEmailError}</span>
+                <span className="text-[11px] text-white/70 mt-1 block pl-0.5">{localEmailError}</span>
               )}
             </div>
 
@@ -496,7 +496,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               id="forgot-back-to-login"
               type="button"
               onClick={() => switchView("login")}
-              className="w-full h-10 bg-transparent border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white text-xs font-semibold py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all select-none cursor-pointer"
+              className="w-full h-10 bg-transparent border border-white/10 hover:border-white/20 text-white/60 hover:text-white text-xs font-semibold py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all select-none cursor-pointer"
               disabled={authActionLoading}
             >
               <i className="ph ph-arrow-left text-sm" />
@@ -508,7 +508,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {authView === "reset_password" && (
           <form id="reset-password-form" onSubmit={handleUpdatePassword} className="space-y-4">
             <div>
-              <label htmlFor="reset-password" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="reset-password" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 New Password
               </label>
               <div className="relative">
@@ -519,26 +519,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                   placeholder="At least 6 characters"
-                  className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                  className="w-full bg-white/5 border border-white/10 text-white text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                   disabled={authActionLoading}
                 />
                 <button
                   type="button"
                   id="toggle-reset-password"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/45 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
                   tabIndex={-1}
                 >
                   <i className={`ph ${showPassword ? "ph-eye-slash" : "ph-eye"} text-base`} />
                 </button>
               </div>
               {localPasswordError && (
-                <span className="text-[11px] text-amber-500 mt-1 block pl-0.5">{localPasswordError}</span>
+                <span className="text-[11px] text-white/70 mt-1 block pl-0.5">{localPasswordError}</span>
               )}
             </div>
 
             <div>
-              <label htmlFor="reset-confirm" className="text-xs text-neutral-400 font-medium block mb-1.5 pl-0.5">
+              <label htmlFor="reset-confirm" className="text-xs text-white/50 font-medium block mb-1.5 pl-0.5">
                 Confirm Password
               </label>
               <div className="relative">
@@ -549,21 +549,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   value={authConfirmPassword}
                   onChange={(e) => setAuthConfirmPassword(e.target.value)}
                   placeholder="Confirm replacement password"
-                  className="w-full bg-black border border-neutral-800 text-neutral-200 text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/30 transition-all placeholder:text-neutral-600"
+                  className="w-full bg-white/5 border border-white/10 text-white text-xs pl-3.5 pr-10 py-3 rounded-xl outline-none focus:border-white focus:ring-1 focus:ring-white/15 transition-all placeholder:text-white/30"
                   disabled={authActionLoading}
                 />
                 <button
                   type="button"
                   id="toggle-reset-confirm"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/45 hover:text-white p-1 cursor-pointer bg-transparent border-none outline-none flex items-center justify-center"
                   tabIndex={-1}
                 >
                   <i className={`ph ${showConfirmPassword ? "ph-eye-slash" : "ph-eye"} text-base`} />
                 </button>
               </div>
               {localConfirmError && (
-                <span className="text-[11px] text-rose-455 mt-1 block pl-0.5">{localConfirmError}</span>
+                <span className="text-[11px] text-white/70 mt-1 block pl-0.5">{localConfirmError}</span>
               )}
             </div>
 

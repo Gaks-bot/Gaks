@@ -7,15 +7,15 @@
 }
 
 :root {
-  --bg-color: #0b0b0b;
-  --card-bg: #151515;
-  --input-bg: #0e0e0e;
-  --text-main: #fff;
-  --text-muted: #666;
-  --accent-green: #1b5e20;
-  --accent-green-text: #4caf50;
-  --accent-gold: #ffb300;
-  --border: #222;
+  --bg-color: #0F0F0F;
+  --card-bg: rgba(255, 255, 255, 0.06);
+  --input-bg: rgba(255, 255, 255, 0.04);
+  --text-main: #FFFFFF;
+  --text-muted: rgba(255, 255, 255, 0.7);
+  --accent-green: rgba(255, 255, 255, 0.15);
+  --accent-green-text: #FFFFFF;
+  --accent-gold: rgba(255, 255, 255, 0.85);
+  --border: rgba(255, 255, 255, 0.12);
   --border-radius: 12px;
 }
 
@@ -125,14 +125,14 @@ h2 {
 }
 
 .trend-down {
-  color: #e53935;
+  color: rgba(255, 255, 255, 0.5);
   text-align: right;
   font-size: 0.75rem;
   display: block;
 }
 
 .trend-up {
-  color: var(--accent-green-text);
+  color: #FFFFFF;
   text-align: right;
   font-size: 0.75rem;
   display: block;
@@ -252,19 +252,19 @@ h2 {
 }
 
 .toggle-btn.active-green {
-  border-color: var(--accent-green-text);
-  color: var(--accent-green-text);
-  background: #1b5e2066;
+  border-color: #FFFFFF;
+  color: #0F0F0F;
+  background: #FFFFFF;
 }
 
 .toggle-btn.active-yellow {
-  border-color: var(--accent-gold);
-  color: var(--accent-gold);
-  background: #ffb30033;
+  border-color: #FFFFFF;
+  color: #0F0F0F;
+  background: #FFFFFF;
 }
 
 .toggle-btn:hover {
-  background: #222;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .input-row {
@@ -274,8 +274,8 @@ h2 {
 
 .price-input {
   background: var(--input-bg);
-  color: var(--text-muted);
-  border: none;
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   outline: none;
   flex: 1;
@@ -284,26 +284,26 @@ h2 {
 }
 
 .plus-btn {
-  color: #000;
+  color: #0F0F0F;
   cursor: pointer;
-  background: #ddd;
+  background: #FFFFFF;
   border: none;
   border-radius: 8px;
   justify-content: center;
   align-items: center;
   width: 45px;
   font-size: 1.2rem;
-  transition: background 0.2s;
+  transition: opacity 0.2s;
   display: flex;
 }
 
 .plus-btn:hover {
-  background: #bbb;
+  opacity: 0.8;
 }
 
 .alert-item {
-  background: #ffb3000d;
-  border: 1px solid #5a4a18;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
   justify-content: space-between;
   align-items: center;
@@ -321,8 +321,8 @@ h2 {
 }
 
 .badge {
-  color: var(--accent-gold);
-  background: #5a4a18;
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 0.65rem;

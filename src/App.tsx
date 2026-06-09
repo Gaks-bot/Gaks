@@ -2368,8 +2368,8 @@ Risk Reminder: ${riskReminder}`;
   if (authLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[95vh] p-4 text-center text-neutral-100 font-sans">
-        <div className="h-10 w-10 rounded-xl border-2 border-emerald-500 animate-spin mb-4" />
-        <p className="text-xs text-neutral-400 font-mono tracking-wide uppercase">Establishing secure connection stream...</p>
+        <div className="h-10 w-10 rounded-xl border-2 border-white/20 border-t-white animate-spin mb-4" />
+        <p className="text-xs text-white/50 font-mono tracking-wide uppercase">Establishing secure connection stream...</p>
       </div>
     );
   }
@@ -2415,10 +2415,10 @@ Risk Reminder: ${riskReminder}`;
   return (
     <div>
       {/* Header Top Container */}
-      <div className="header-top relative border-b border-neutral-900 bg-neutral-950 px-5">
+      <div className="header-top relative border-b border-white/10 bg-[#0F0F0F] px-5">
         {/* Centered Gaks AI Header */}
         <span className="font-bold tracking-tight text-white flex items-center gap-2 text-sm sm:text-base select-none">
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
+          <span className="h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)] animate-pulse" />
           Gaks Ai
         </span>
 
@@ -2427,7 +2427,7 @@ Risk Reminder: ${riskReminder}`;
           onClick={() => setIsSettingsOpen(true)}
           id="global-settings-gear-btn"
           title="User Settings & Profile"
-          className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center justify-center h-8 w-8 bg-neutral-900 hover:bg-[#1a1a1a] hover:text-emerald-400 border border-neutral-800 text-neutral-400 rounded-lg cursor-pointer transition-colors outline-none font-sans"
+          className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center justify-center h-8 w-8 bg-white/5 hover:bg-white/10 hover:text-white border border-white/10 text-white/60 rounded-lg cursor-pointer transition-colors outline-none font-sans"
         >
           <i className="ph ph-gear text-base" />
         </button>
@@ -2438,8 +2438,8 @@ Risk Reminder: ${riskReminder}`;
         <div id="market" className={`page ${currentPage === "market" ? "active" : ""}`}>
           <div className="flex justify-between items-center mb-1">
             <h2>Live Rates</h2>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#1e1e1e] border border-neutral-800 text-[10px] font-mono text-neutral-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-white/50">
+              <span className="h-1.5 w-1.5 rounded-full bg-white/80 animate-pulse" />
               <span>5s Auto Update</span>
             </div>
           </div>
@@ -2457,7 +2457,7 @@ Risk Reminder: ${riskReminder}`;
               return (
                 <div
                   key={coin.pair}
-                  className="card flex flex-col p-4 border border-neutral-800 rounded-xl"
+                  className="card flex flex-col p-4 border border-white/10 rounded-xl"
                   style={{ marginBottom: 0 }}
                 >
                   <div className="market-row w-full flex justify-between items-center bg-transparent">
@@ -2466,24 +2466,24 @@ Risk Reminder: ${riskReminder}`;
                       <span className="pair-sub">{coin.name}</span>
                     </div>
                     <div className="text-right">
-                      <span className="price-val block">{formatPrice(coin.pair, coin.price)}</span>
-                      <span className={isUpTrend ? "trend-up" : "trend-down"}>
+                      <span className={`price-val block ${isUpTrend ? "text-emerald-400" : "text-rose-400"}`}>{formatPrice(coin.pair, coin.price)}</span>
+                      <span className={`text-[11px] font-semibold block ${isUpTrend ? "text-emerald-500" : "text-rose-500"}`}>
                         {isUpTrend ? "▲" : "▼"} {isUpTrend ? "+" : ""}
                         {coin.change.toFixed(2)}%
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex gap-4 mt-3 pt-2.5 border-t border-dashed border-neutral-900 text-[10px] font-mono text-neutral-400 justify-between">
+                  <div className="flex gap-4 mt-3 pt-2.5 border-t border-dashed border-white/10 text-[10px] font-mono text-neutral-400 justify-between">
                     <div>
-                      <span className="text-emerald-500 font-bold mr-1.5">REC. TAKE PROFIT:</span>
-                      <span className="text-neutral-200 font-semibold">
+                      <span className="text-white font-bold mr-1.5">REC. TAKE PROFIT:</span>
+                      <span className="text-white/80 font-semibold font-mono">
                         {formatPrice(coin.pair, tpPrice)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-rose-500 font-bold mr-1.5">REC. STOP LOSS:</span>
-                      <span className="text-neutral-200 font-semibold">
+                      <span className="text-white/50 font-semibold mr-1.5 font-mono">REC. STOP LOSS:</span>
+                      <span className="text-white/80 font-semibold font-mono">
                         {formatPrice(coin.pair, slPrice)}
                       </span>
                     </div>
@@ -2499,7 +2499,7 @@ Risk Reminder: ${riskReminder}`;
           <div className="strategy-header">
             <h2>
               My Trading Strategy{" "}
-              <span style={{ color: "var(--accent-green-text)" }}>●</span>
+              <span className="text-white/60">●</span>
             </h2>
             <span
               className="cursor-pointer hover:text-white select-none transition-colors"
@@ -2521,9 +2521,9 @@ Risk Reminder: ${riskReminder}`;
             className="btn-full text-center"
             onClick={handleSaveStrategy}
             style={{
-              backgroundColor: isSaved ? "rgba(27, 94, 32, 0.4)" : "var(--card-bg)",
-              color: isSaved ? "var(--accent-green-text)" : "white",
-              border: isSaved ? "1px solid var(--accent-green-text)" : "none"
+              backgroundColor: isSaved ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.05)",
+              color: isSaved ? "#FFFFFF" : "rgba(255,255,255,0.7)",
+              border: isSaved ? "1px solid rgba(255, 255, 255, 0.25)" : "1px solid rgba(255, 255, 255, 0.1)"
             }}
           >
             <i className={isSaved ? "ph ph-check-circle" : "ph ph-floppy-disk"} />{" "}
@@ -2552,17 +2552,17 @@ Risk Reminder: ${riskReminder}`;
           {/* Real-time active key cluster indicator */}
           <div 
             onClick={() => setCurrentPage("keys")}
-            className="flex items-center justify-between p-3.5 mb-4 rounded-xl border border-neutral-800 hover:border-neutral-700 cursor-pointer transition-all animate-fadeIn select-none"
+            className="flex items-center justify-between p-3.5 mb-4 rounded-xl border border-white/10 hover:border-white/20 cursor-pointer transition-all animate-fadeIn select-none font-sans"
             style={{ backgroundColor: "var(--card-bg)" }}
           >
             <div className="flex items-center gap-2.5">
               <span className="relative flex h-2.5 w-2.5">
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${userGeminiKey ? "bg-emerald-400" : "bg-amber-400"}`}></span>
-                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${userGeminiKey ? "bg-emerald-500" : "bg-amber-500"}`}></span>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${userGeminiKey ? "bg-white" : "bg-white/40"}`}></span>
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${userGeminiKey ? "bg-white" : "bg-white/40"}`}></span>
               </span>
-              <div className="text-xs font-sans">
-                <span className="text-neutral-400">Gemini Neural Stack: </span>
-                <span className={`font-semibold ${userGeminiKey ? "text-emerald-400" : "text-amber-500"}`}>
+              <div className="text-xs">
+                <span className="text-white/50">Gemini Neural Stack: </span>
+                <span className={`font-semibold ${userGeminiKey ? "text-white" : "text-white/60"}`}>
                   {userGeminiKey ? "Direct User Key Active" : "Personal API Key Required"}
                 </span>
               </div>
@@ -2611,23 +2611,23 @@ Risk Reminder: ${riskReminder}`;
               {/* Main Workspace: Screenshot and TradingView side-by-side / stacked responsive */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* Left Column: Uploaded Screenshot card */}
-                <div className="card p-4 border border-neutral-800 rounded-xl bg-[#0d0d0d] flex flex-col h-[340px] relative">
+                <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] flex flex-col h-[340px] relative">
                   <div className="flex justify-between items-center mb-2.5">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300 font-sans">
+                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-white/80 font-sans">
                         Uploaded Screenshot
                       </span>
                     </div>
                     <button
-                      className="text-neutral-500 hover:text-rose-500 transition-colors p-1"
+                      className="text-white/40 hover:text-white transition-colors p-1"
                       onClick={handleRemoveImage}
                       title="Remove Image"
                     >
                       <i className="ph ph-trash text-sm" />
                     </button>
                   </div>
-                  <div className="flex-1 overflow-hidden relative flex items-center justify-center bg-neutral-950/40 rounded-lg border border-neutral-800/80 group">
+                  <div className="flex-1 overflow-hidden relative flex items-center justify-center bg-white/5 rounded-lg border border-white/10 group">
                     <img
                       src={uploadedImage}
                       alt="Uploaded chart screenshot"
@@ -2637,61 +2637,61 @@ Risk Reminder: ${riskReminder}`;
 
                     {/* OPTION C: Visual overlays on top of the analyzed screenshot */}
                     {analysisReport && showAIOverlay && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
-                      <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 bg-gradient-to-b from-black/20 via-transparent to-black/20 animate-fadeIn select-none">
+                      <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 bg-gradient-to-b from-black/40 via-transparent to-black/40 animate-fadeIn select-none">
                         {analysisReport.signal === "BUY" ? (
                           <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
-                            {/* Target Take Profit Zone (Green) */}
-                            <div className="h-[35%] w-full bg-emerald-500/10 border-b border-dashed border-emerald-500/50 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 top-2 bg-emerald-950/90 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            {/* Target Take Profit Zone (High contrast White) */}
+                            <div className="h-[35%] w-full bg-white/10 border-b border-dashed border-white/30 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 top-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
                                 TAKE PROFIT (TP): {analysisReport.tp}
                               </span>
-                              <span className="absolute right-2 top-2 text-[8px] font-mono text-emerald-500/60 uppercase tracking-widest">Reward Zone</span>
+                              <span className="absolute right-2 top-2 text-[8px] font-mono text-white/50 uppercase tracking-widest">Reward Zone</span>
                             </div>
 
-                            {/* Entry Level Line (Yellow/Orange) */}
-                            <div className="h-[30%] w-full border-b border-dashed border-amber-500/60 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 -translate-y-1/2 bg-amber-950/90 text-amber-400 border border-amber-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                            {/* Entry Level Line (Medium contrast Gray) */}
+                            <div className="h-[30%] w-full border-b border-dashed border-white/20 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 -translate-y-1/2 bg-[#0F0F0F] text-white border border-white/20 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
                                 ESTIMATED ENTRY: {analysisReport.level}
                               </span>
-                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-amber-500/60 uppercase tracking-widest">Trigger Level</span>
+                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-white/40 uppercase tracking-widest">Trigger Level</span>
                             </div>
 
-                            {/* Risk Stop Loss Zone (Red) */}
-                            <div className="h-[35%] w-full bg-rose-500/10 flex items-end justify-between px-4 pb-4 relative">
-                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-rose-500/50" />
-                              <span className="absolute left-2 bottom-2 bg-rose-950/90 text-rose-400 border border-rose-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                            {/* Risk Stop Loss Zone (Muted Gray / Low Opacity) */}
+                            <div className="h-[35%] w-full bg-white/5 flex items-end justify-between px-4 pb-4 relative">
+                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-white/15" />
+                              <span className="absolute left-2 bottom-2 bg-[#0F0F0F] text-white/60 border border-white/10 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded tracking-wider">
                                 STOP LOSS (SL): {analysisReport.sl}
                               </span>
-                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-rose-500/60 uppercase tracking-widest">Risk Area</span>
+                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-white/30 uppercase tracking-widest">Risk Area</span>
                             </div>
                           </div>
                         ) : (
                           <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
-                            {/* Risk Stop Loss Zone at the Top for SELL */}
-                            <div className="h-[35%] w-full bg-rose-500/10 border-b border-dashed border-rose-500/50 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 top-2 bg-rose-950/90 text-rose-400 border border-rose-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                            {/* Risk Stop Loss Zone at the Top for SELL (Muted Gray / Low Opacity) */}
+                            <div className="h-[35%] w-full bg-white/5 border-b border-dashed border-white/15 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 top-2 bg-[#0F0F0F] text-white/60 border border-white/10 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded tracking-wider">
                                 STOP LOSS (SL): {analysisReport.sl}
                               </span>
-                              <span className="absolute right-2 top-2 text-[8px] font-mono text-rose-500/60 uppercase tracking-widest">Risk Area</span>
+                              <span className="absolute right-2 top-2 text-[8px] font-mono text-white/30 uppercase tracking-widest">Risk Area</span>
                             </div>
 
-                            {/* Entry Level Line (Yellow/Orange) */}
-                            <div className="h-[30%] w-full border-b border-dashed border-amber-500/60 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 -translate-y-1/2 bg-amber-950/90 text-amber-400 border border-amber-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                            {/* Entry Level Line (Medium contrast Gray) */}
+                            <div className="h-[30%] w-full border-b border-dashed border-white/20 flex items-center justify-between px-4 relative">
+                              <span className="absolute left-2 -translate-y-1/2 bg-[#0F0F0F] text-white border border-white/20 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
                                 ESTIMATED ENTRY: {analysisReport.level}
                               </span>
-                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-amber-500/60 uppercase tracking-widest">Trigger Level</span>
+                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-white/40 uppercase tracking-widest">Trigger Level</span>
                             </div>
 
-                            {/* Target Take Profit Zone at the Bottom for SELL */}
-                            <div className="h-[35%] w-full bg-emerald-500/10 flex items-end justify-between px-4 pb-4 relative">
-                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-emerald-500/50" />
-                              <span className="absolute left-2 bottom-2 bg-emerald-950/90 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            {/* Target Take Profit Zone at the Bottom for SELL (High contrast White) */}
+                            <div className="h-[35%] w-full bg-white/10 flex items-end justify-between px-4 pb-4 relative">
+                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-white/30" />
+                              <span className="absolute left-2 bottom-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
                                 TAKE PROFIT (TP): {analysisReport.tp}
                               </span>
-                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-emerald-500/60 uppercase tracking-widest">Reward Zone</span>
+                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-white/50 uppercase tracking-widest">Reward Zone</span>
                             </div>
                           </div>
                         )}
@@ -2705,7 +2705,7 @@ Risk Reminder: ${riskReminder}`;
                           e.stopPropagation();
                           setShowAIOverlay(!showAIOverlay);
                         }}
-                        className="absolute right-2 top-2 bg-neutral-900/95 hover:bg-neutral-800 border border-neutral-700 hover:border-neutral-500 text-neutral-350 rounded px-2.5 py-1 text-[10px] font-mono font-semibold select-none flex items-center gap-1 shadow-2xl pointer-events-auto transition-all z-20"
+                        className="absolute right-2 top-2 bg-[#0F0F0F] hover:bg-white/5 border border-white/10 hover:border-white/20 text-white/80 rounded px-2.5 py-1 text-[10px] font-mono font-semibold select-none flex items-center gap-1 shadow-2xl pointer-events-auto transition-all z-20"
                         title="Toggle AI Technical Target Overlays"
                       >
                         <i className={`ph ${showAIOverlay ? "ph-eye-slash" : "ph-eye"} text-[11px]`} />
@@ -2716,27 +2716,27 @@ Risk Reminder: ${riskReminder}`;
                 </div>
 
                 {/* Right Column: Interactive TradingView Chart (Bigger Picture Context) */}
-                <div className="card p-4 border border-neutral-800 rounded-xl bg-[#0d0d0d] flex flex-col h-[340px] relative">
+                <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] flex flex-col h-[340px] relative">
                   <div className="flex justify-between items-center mb-2.5">
                     <div className="flex items-center gap-2 font-sans">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
+                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-white/80">
                         TradingView Bigger Picture
                       </span>
                       {detectedTimeframe && (
-                        <span className="text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold uppercase">
+                        <span className="text-[10px] bg-white/10 text-white border border-white/10 px-1.5 py-0.5 rounded font-mono font-bold uppercase">
                           {getHigherTimeframeDetails(detectedTimeframe).label}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-hidden rounded-lg border border-neutral-800/80 bg-neutral-950 relative">
+                  <div className="flex-1 overflow-hidden rounded-lg border border-white/10 bg-[#0F0F0F] relative">
                     {!detectedSymbol || !detectedTimeframe ? (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center select-none bg-neutral-950">
-                        <i className="ph ph-chart-line text-neutral-600 text-3xl mb-2.5 animate-pulse" />
-                        <p className="text-xs font-semibold text-neutral-300 font-sans mb-1">Live Chart Context Locked</p>
-                        <p className="text-[10px] text-neutral-500 font-mono max-w-[240px]">Select a Trading Pair and Timeframe below to stream the live higher-timeframe macro trend.</p>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center select-none bg-[#0F0F0F]">
+                        <i className="ph ph-chart-line text-white/30 text-3xl mb-2.5 animate-pulse" />
+                        <p className="text-xs font-semibold text-white/80 font-sans mb-1">Live Chart Context Locked</p>
+                        <p className="text-[10px] text-white/50 font-mono max-w-[240px]">Select a Trading Pair and Timeframe below to stream the live higher-timeframe macro trend.</p>
                       </div>
                     ) : (
                       <iframe
@@ -2750,11 +2750,11 @@ Risk Reminder: ${riskReminder}`;
                 </div>
               </div>
 
-              {/* Manual core metadata entries selector card */}
-              <div className="card p-4 border border-neutral-800/80 rounded-xl bg-[#0b0b0b] mb-4 flex flex-col gap-4 relative">
-                <div className="flex items-center gap-2 pb-2.5 border-b border-neutral-800/60">
-                  <i className="ph ph-sliders text-emerald-450 text-base" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-350">
+              {/* Required Analysis Metadata Settings Panel */}
+              <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] mb-4 flex flex-col gap-4 relative">
+                <div className="flex items-center gap-2 pb-2.5 border-b border-white/10">
+                  <i className="ph ph-sliders text-white text-base" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/80">
                     Required Analysis Metadata Settings
                   </span>
                 </div>
@@ -2762,15 +2762,15 @@ Risk Reminder: ${riskReminder}`;
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Searchable Trading Pair Selector */}
                   <div className="flex flex-col relative">
-                    <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wide mb-1.5 font-mono flex items-center justify-between">
-                      <span>Trading Pair <span className="text-rose-500">*</span></span>
+                    <label className="text-[10px] text-white/50 font-bold uppercase tracking-wide mb-1.5 font-mono flex items-center justify-between">
+                      <span>Trading Pair <span className="text-white/40">*</span></span>
                       {detectedSymbol && (
-                        <span className="text-[9px] text-emerald-400 font-black uppercase tracking-widest">Locked ✓</span>
+                        <span className="text-[9px] text-white font-black uppercase tracking-widest">Locked ✓</span>
                       )}
                     </label>
                     <div className="relative">
                       <div className="relative flex items-center">
-                        <i className="ph ph-magnifying-glass absolute left-3 text-neutral-500 text-xs pointer-events-none" />
+                        <i className="ph ph-magnifying-glass absolute left-3 text-white/40 text-xs pointer-events-none" />
                         <input
                           type="text"
                           placeholder="Search or enter pair (e.g. EURUSD)"
@@ -2782,7 +2782,7 @@ Risk Reminder: ${riskReminder}`;
                             setDetectedSymbol(val);
                             setIsSymbolDropdownOpen(true);
                           }}
-                          className="bg-neutral-900 border border-neutral-850 focus:border-emerald-500 text-neutral-200 text-xs pl-8 pr-8 py-2.5 rounded-lg w-full font-mono outline-none transition-all placeholder:text-neutral-600 focus:bg-neutral-950"
+                          className="bg-white/5 border border-white/10 focus:border-white text-white text-xs pl-8 pr-8 py-2.5 rounded-lg w-full font-mono outline-none transition-all placeholder:text-white/30 focus:bg-white/10"
                         />
                         {detectedSymbol && (
                           <button
@@ -2800,11 +2800,11 @@ Risk Reminder: ${riskReminder}`;
 
                       {/* Search results dropdown listing */}
                       {isSymbolDropdownOpen && (
-                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-neutral-950 border border-neutral-800 rounded-lg shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-900 font-mono">
+                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-[#0F0F0F] border border-white/15 rounded-lg shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-white/5 font-mono">
                           {/* Option to use custom entry if not exactly matched */}
                           {symbolSearchQuery.trim() && !COMMON_PAIRS.some(p => p.symbol === symbolSearchQuery.trim()) && (
                             <div 
-                              className="p-2 text-xs hover:bg-neutral-900 cursor-pointer text-amber-400 flex items-center gap-1.5"
+                              className="p-2 text-xs hover:bg-white/5 cursor-pointer text-white flex items-center gap-1.5"
                               onClick={() => {
                                 setDetectedSymbol(symbolSearchQuery.trim());
                                 setIsSymbolDropdownOpen(false);
@@ -2829,7 +2829,7 @@ Risk Reminder: ${riskReminder}`;
 
                             return (
                               <div key={category} className="p-1 px-1.5">
-                                <div className="text-[9px] text-neutral-600 font-bold uppercase tracking-wider px-2 py-1">
+                                <div className="text-[9px] text-white/40 font-bold uppercase tracking-wider px-2 py-1">
                                   {category}
                                 </div>
                                 <div className="space-y-0.5">
@@ -2843,8 +2843,8 @@ Risk Reminder: ${riskReminder}`;
                                       }}
                                       className={`p-2 rounded text-xs select-none cursor-pointer flex items-center justify-between ${
                                         detectedSymbol === item.symbol
-                                          ? "bg-emerald-950/40 text-emerald-400 font-semibold"
-                                          : "text-neutral-400 hover:bg-neutral-900 hover:text-white"
+                                          ? "bg-white/10 text-white font-semibold"
+                                          : "text-white/60 hover:bg-white/5 hover:text-white"
                                       }`}
                                     >
                                       <span>{item.label}</span>
@@ -2860,7 +2860,7 @@ Risk Reminder: ${riskReminder}`;
                             p.symbol.toLowerCase().includes(symbolSearchQuery.toLowerCase()) ||
                             p.label.toLowerCase().includes(symbolSearchQuery.toLowerCase())
                           ).length === 0 && (
-                            <div className="p-3 text-center text-xs text-neutral-600">
+                            <div className="p-3 text-center text-xs text-white/30">
                               No matching standards found.
                             </div>
                           )}
@@ -2871,16 +2871,16 @@ Risk Reminder: ${riskReminder}`;
 
                   {/* Required Timeframe Selector */}
                   <div className="flex flex-col">
-                    <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wide mb-1.5 font-mono flex items-center justify-between">
-                      <span>Timeframe <span className="text-rose-500">*</span></span>
+                    <label className="text-[10px] text-white/50 font-bold uppercase tracking-wide mb-1.5 font-mono flex items-center justify-between">
+                      <span>Timeframe <span className="text-white/40">*</span></span>
                       {detectedTimeframe && (
-                        <span className="text-[9px] text-emerald-400 font-black uppercase tracking-widest">Locked ✓</span>
+                        <span className="text-[9px] text-white font-black uppercase tracking-widest">Locked ✓</span>
                       )}
                     </label>
                     <select
                       value={detectedTimeframe}
                       onChange={(e) => setDetectedTimeframe(e.target.value)}
-                      className="bg-neutral-900 border border-neutral-850 focus:border-emerald-500 text-neutral-200 text-xs px-3 py-2.5 rounded-lg w-full font-mono outline-none transition-all cursor-pointer focus:bg-neutral-950"
+                      className="bg-white/5 border border-white/10 focus:border-white text-white text-xs px-3 py-2.5 rounded-lg w-full font-mono outline-none transition-all cursor-pointer focus:bg-white/10"
                     >
                       <option value="" disabled>Select Core Timeframe...</option>
                       {TIMEFRAMES.map((tf) => (
@@ -2904,15 +2904,15 @@ Risk Reminder: ${riskReminder}`;
           )}
 
           {(isAnalyzing || analysisLogs.length > 0) && (
-            <div className="card p-4 rounded-xl border border-neutral-800 font-mono text-xs text-neutral-400 space-y-1 bg-[#0b0b0b] max-h-[140px] overflow-y-auto mb-[15px]">
+            <div className="card p-4 rounded-xl border border-white/10 font-mono text-xs text-white/50 space-y-1 bg-[#0F0F0F] max-h-[140px] overflow-y-auto mb-[15px]">
               {analysisLogs.map((log, index) => (
                 <div key={index} className="flex gap-2">
-                  <span className="text-amber-500">▶</span>
+                  <span className="text-white/40">▶</span>
                   <span>{log}</span>
                 </div>
               ))}
               {isAnalyzing && (
-                <div className="flex gap-2 items-center text-emerald-500 animate-pulse mt-1">
+                <div className="flex gap-2 items-center text-white/80 animate-pulse mt-1">
                   <span>●</span>
                   <span className="italic">Running AI strategy scanner...</span>
                 </div>
@@ -2921,24 +2921,24 @@ Risk Reminder: ${riskReminder}`;
           )}
 
           {analysisReport && (
-            <div className={`card p-5 border rounded-xl space-y-3 bg-[#111] animate-fadeIn mb-4 ${
+            <div className={`card p-5 border rounded-xl space-y-3 bg-[#0F0F0F] animate-fadeIn mb-4 ${
               analysisReport.signal === "FAILED" 
-                ? "border-rose-950/60 shadow-[0_0_15px_rgba(239,68,68,0.05)]" 
-                : "border-dashed border-neutral-700"
+                ? "border-white/15" 
+                : "border-dashed border-white/10"
             }`}>
-              <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
+              <div className="flex justify-between items-center pb-2 border-b border-white/10">
                 <div className="flex items-center gap-2">
                   <span
                     className={`px-2.5 py-1 text-xs font-black rounded ${
                       analysisReport.signal === "BUY"
-                        ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
+                        ? "bg-white text-black border border-white"
                         : analysisReport.signal === "SELL"
-                        ? "bg-rose-950 text-rose-400 border border-rose-500/20"
+                        ? "bg-transparent text-white border border-white/40"
                         : analysisReport.signal === "NO TRADE" || analysisReport.signal === "NO_TRADE"
-                        ? "bg-amber-950 text-amber-400 border border-amber-500/20"
+                        ? "bg-white/5 text-white/70 border border-white/10"
                         : analysisReport.signal === "FAILED"
-                        ? "bg-rose-950/80 text-rose-300 border border-rose-800/30"
-                        : "bg-neutral-800 text-neutral-300"
+                        ? "bg-white/5 text-white/40 border border-white/10"
+                        : "bg-white/10 text-white"
                     }`}
                   >
                     {analysisReport.signal === "FAILED" ? "ANALYSIS FAILED" : `${analysisReport.signal} setup`}
@@ -3047,34 +3047,34 @@ Risk Reminder: ${riskReminder}`;
                   <div className="space-y-3.5 pt-1 animate-fadeIn">
                     {/* Raw original AI findings */}
                     <div className="grid grid-cols-3 gap-2 font-mono text-xs text-neutral-400">
-                      <div className="border border-neutral-800/80 bg-neutral-950 p-2 rounded">
-                        <div className="text-[8px] text-neutral-600 mb-0.5 tracking-wider font-bold">RAW ENTRY</div>
-                        <div className="font-extrabold text-neutral-200">{analysisReport.level}</div>
+                      <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
+                        <div className="text-[8px] text-white/40 mb-0.5 tracking-wider font-bold">RAW ENTRY</div>
+                        <div className="font-extrabold text-white/90">{analysisReport.level}</div>
                       </div>
-                      <div className="border border-neutral-800/80 bg-neutral-950 p-2 rounded">
-                        <div className="text-[8px] text-neutral-600 mb-0.5 tracking-wider font-bold">RAW TP</div>
-                        <div className="font-extrabold text-emerald-500">{analysisReport.tp}</div>
+                      <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
+                        <div className="text-[8px] text-white/40 mb-0.5 tracking-wider font-bold">RAW TP</div>
+                        <div className="font-extrabold text-white">{analysisReport.tp}</div>
                       </div>
-                      <div className="border border-neutral-800/80 bg-neutral-950 p-2 rounded">
-                        <div className="text-[8px] text-neutral-600 mb-0.5 tracking-wider font-bold">RAW SL</div>
-                        <div className="font-extrabold text-rose-500">{analysisReport.sl}</div>
+                      <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
+                        <div className="text-[8px] text-white/40 mb-0.5 tracking-wider font-bold">RAW SL</div>
+                        <div className="font-extrabold text-white/60">{analysisReport.sl}</div>
                       </div>
                     </div>
 
                     {/* Safeguard Board */}
-                    <div className="bg-[#151515] border border-neutral-800 rounded-lg p-3.5 space-y-3 relative overflow-hidden">
-                      <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
+                    <div className="bg-[#0F0F0F] border border-white/10 rounded-lg p-3.5 space-y-3 relative overflow-hidden">
+                      <div className="flex justify-between items-center pb-2 border-b border-white/10">
                         <div className="flex items-center gap-1.5">
-                          <i className={`ph ph-shield-check text-[14px] ${directConflict ? "text-rose-500 animate-pulse" : stopLevelWarning ? "text-amber-500 animate-pulse" : "text-emerald-500"}`} />
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-300">MT5 Broker Compliance Safeguard</span>
+                          <i className={`ph ph-shield-check text-[14px] ${directConflict ? "text-white animate-pulse" : stopLevelWarning ? "text-white/70 animate-pulse" : "text-white"}`} />
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-white/80">MT5 Broker Compliance Safeguard</span>
                         </div>
                         <div>
-                          <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${
+                          <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase select-none ${
                             directConflict 
-                              ? "bg-rose-950 text-rose-400 border border-rose-500/20" 
+                              ? "bg-white text-black border border-white" 
                               : stopLevelWarning 
-                              ? "bg-amber-950 text-amber-400 border border-amber-500/10" 
-                              : "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
+                              ? "bg-[#0F0F0F] text-white/90 border border-white/25" 
+                              : "bg-white/10 text-white/85 border border-white/10"
                           }`}>
                             {directConflict ? "INVALID CHANNELS" : stopLevelWarning ? "STOPLEV RISK" : "LEVELS COMPLIANT"}
                           </span>
@@ -3083,24 +3083,24 @@ Risk Reminder: ${riskReminder}`;
 
                       {/* Warnings if Flipped/Too Close */}
                       {directConflict && (
-                        <div className="bg-rose-950/45 border border-rose-900/50 rounded-lg p-2.5 text-[11px] text-rose-350 space-y-1">
+                        <div className="bg-white/5 border border-white text-white rounded-lg p-2.5 text-[11px] space-y-1">
                           <div className="font-bold flex items-center gap-1">
-                            <i className="ph ph-warning-circle text-[13px] text-rose-400" />
+                            <i className="ph ph-warning-circle text-[13px] text-white" />
                             <span>Action Required: Reversed Levels Detected!</span>
                           </div>
-                          <p className="font-sans text-[10px] text-rose-400/90 leading-relaxed text-left">
+                          <p className="font-sans text-[10px] text-white/70 leading-relaxed text-left">
                             For a <strong>{analysisReport.signal}</strong> setup, Take Profit must be {isBuy ? "higher" : "lower"} than the Entry, and Stop Loss must be {isBuy ? "lower" : "higher"}. MetaTrader 5 will strictly block orders with these inverted rates.
                           </p>
                         </div>
                       )}
 
                       {!directConflict && stopLevelWarning && (
-                        <div className="bg-amber-950/45 border border-amber-900/50 rounded-lg p-2.5 text-[11px] text-amber-350 space-y-1">
+                        <div className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-[11px] text-white/90 space-y-1">
                           <div className="font-bold flex items-center gap-1">
-                            <i className="ph ph-warning text-[13px] text-amber-400" />
+                            <i className="ph ph-warning text-[13px] text-white/70" />
                             <span>Warning: Broker Stop Level Margin Limit Risk!</span>
                           </div>
-                          <p className="font-sans text-[10px] text-amber-400/90 leading-relaxed text-left">
+                          <p className="font-sans text-[10px] text-white/60 leading-relaxed text-left">
                             {isSlCloseRisk ? `S/L (${slPips} pips)` : `T/P (${tpPips} pips)`} is extremely tight. Most Forex/Indices brokers require levels to be placed at least 10–15 pips away from active entry. A tight buffer frequently prompts "Invalid S/L or T/P" errors.
                           </p>
                         </div>
@@ -3109,33 +3109,33 @@ Risk Reminder: ${riskReminder}`;
                       {/* Direct Editing Panel */}
                       <div className="grid grid-cols-3 gap-2.5 pt-1">
                         <div>
-                          <label className="block text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-1">ENTRY LEVEL</label>
+                          <label className="block text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">ENTRY LEVEL</label>
                           <input
                             type="text"
                             value={adjustedEntry}
                             onChange={(e) => setAdjustedEntry(e.target.value)}
-                            className="w-full text-center bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-amber-500/40 text-neutral-100 font-mono text-xs py-1 rounded transition-colors"
+                            className="w-full text-center bg-white/5 border border-white/10 focus:outline-none focus:border-white text-white font-mono text-xs py-1 rounded transition-colors"
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-1">TAKE PROFIT (TP)</label>
+                          <label className="block text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">TAKE PROFIT (TP)</label>
                           <input
                             type="text"
                             value={adjustedTp}
                             onChange={(e) => setAdjustedTp(e.target.value)}
-                            className={`w-full text-center bg-neutral-900 border text-xs py-1 rounded font-mono transition-colors focus:outline-none focus:border-emerald-500/40 ${
-                              tpValid ? "text-emerald-400 border-neutral-800" : "text-rose-400 border-rose-900"
+                            className={`w-full text-center bg-white/5 border text-xs py-1 rounded font-mono transition-colors focus:outline-none focus:border-white ${
+                              tpValid ? "text-white border-white/10" : "text-white/50 border-white/30"
                             }`}
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-1">STOP LOSS (SL)</label>
+                          <label className="block text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">STOP LOSS (SL)</label>
                           <input
                             type="text"
                             value={adjustedSl}
                             onChange={(e) => setAdjustedSl(e.target.value)}
-                            className={`w-full text-center bg-neutral-900 border text-xs py-1 rounded font-mono transition-colors focus:outline-none focus:border-rose-500/40 ${
-                              slValid ? "text-rose-400 border-neutral-800" : "text-rose-400 border-rose-900"
+                            className={`w-full text-center bg-white/5 border text-xs py-1 rounded font-mono transition-colors focus:outline-none focus:border-white ${
+                              slValid ? "text-white border-white/10" : "text-white/50 border-white/30"
                             }`}
                           />
                         </div>
@@ -3199,50 +3199,50 @@ Risk Reminder: ${riskReminder}`;
                           <div className="space-y-3 pt-2 font-sans text-left">
                             {/* Setup Param Compliance Banner */}
                             {setupViolatesRules ? (
-                              <div className="bg-rose-950/25 border border-rose-500/25 rounded-lg p-3 text-left">
-                                <div className="flex items-center gap-2 text-rose-400">
-                                  <i className="ph ph-shield-warning text-sm font-bold flex-shrink-0" />
+                              <div className="bg-white/5 border border-white text-white rounded-lg p-3 text-left animate-fadeIn">
+                                <div className="flex items-center gap-2 text-white">
+                                  <i className="ph ph-shield-warning text-sm font-bold flex-shrink-0 animate-pulse" />
                                   <span className="text-xs font-bold font-mono tracking-wide uppercase">Setup does not meet your risk parameters.</span>
                                 </div>
-                                <div className="pl-6 mt-1.5 text-[10.5px] text-rose-300/80 font-medium space-y-1">
+                                <div className="pl-6 mt-1.5 text-[10.5px] text-white/70 font-medium space-y-1">
                                   {rulesViolationReasons.map((reason, rIdx) => (
                                     <div key={rIdx} className="flex gap-1.5 items-start">
-                                      <span className="text-rose-500">•</span>
+                                      <span className="text-white/40">•</span>
                                       <span>{reason}</span>
                                     </div>
                                   ))}
                                 </div>
                               </div>
                             ) : (
-                              <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-lg p-3 flex items-center gap-2.5 text-left">
-                                <div className="h-5 w-5 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                              <div className="bg-white/10 border border-[#FFFFFF]/20 rounded-lg p-3 flex items-center gap-2.5 text-left animate-fadeIn">
+                                <div className="h-5 w-5 rounded bg-white/10 flex items-center justify-center text-white">
                                   <i className="ph ph-shield-check text-xs font-bold" />
                                 </div>
                                 <div className="flex-1">
-                                  <span className="text-xs font-bold text-emerald-400 font-mono tracking-wide uppercase block font-sans">Setup complies with your risk parameters.</span>
-                                  <span className="text-[9.5px] text-neutral-400 leading-none">All configured drawdown and reward-to-risk rules are satisfied.</span>
+                                  <span className="text-xs font-bold text-white font-mono tracking-wide uppercase block font-sans">Setup complies with your risk parameters.</span>
+                                  <span className="text-[9.5px] text-white/50 leading-none">All configured drawdown and reward-to-risk rules are satisfied.</span>
                                 </div>
                               </div>
                             )}
 
                             {/* Execution Scorecard Grid */}
-                            <div className="bg-[#0b0c0e] border border-neutral-900 rounded-lg p-3.5 space-y-3">
-                              <div className="flex justify-between items-center pb-2 border-b border-neutral-850">
+                            <div className="bg-[#0F0F0F] border border-white/10 rounded-lg p-3.5 space-y-3">
+                              <div className="flex justify-between items-center pb-2 border-b border-white/10">
                                 <div className="flex items-center gap-1.5">
-                                  <i className="ph ph-sliders text-[13px] text-neutral-400" />
-                                  <span className="text-[9.5px] font-mono font-bold tracking-wider uppercase text-neutral-300">
+                                  <i className="ph ph-sliders text-[13px] text-white/50" />
+                                  <span className="text-[9.5px] font-mono font-bold tracking-wider uppercase text-white/80">
                                     Account Risk Allocation Matrix
                                   </span>
                                 </div>
-                                <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded uppercase bg-neutral-900 border border-neutral-850 text-neutral-400">
+                                <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded uppercase bg-white/5 border border-white/10 text-white/75">
                                   {riskSettings.accountType === "Prop Firm" ? `${riskSettings.propFirmName} Preset` : `${riskSettings.accountType} A/C`}
                                 </span>
                               </div>
 
                               {/* Direct Configuration Fields for Account Size, Risk %, Drawdown % */}
-                              <div className="grid grid-cols-3 gap-2 font-mono text-[10px] bg-neutral-950/50 p-2.5 rounded-lg border border-neutral-900/80">
+                              <div className="grid grid-cols-3 gap-2 font-mono">
                                 <div className="space-y-1">
-                                  <label className="block text-[7.5px] text-neutral-450 font-extrabold uppercase tracking-widest leading-none">
+                                  <label className="block text-[7.5px] text-white/40 font-extrabold uppercase tracking-widest leading-none">
                                     Cap Size ($)
                                   </label>
                                   <input
@@ -3256,13 +3256,13 @@ Risk Reminder: ${riskReminder}`;
                                         accountSize: val
                                       });
                                     }}
-                                    className="w-full h-8 bg-[#07090b] border border-neutral-850 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-emerald-500 font-bold"
+                                    className="w-full h-8 bg-white/5 border border-white/10 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-white font-bold"
                                     placeholder="100000"
                                   />
                                 </div>
 
                                 <div className="space-y-1">
-                                  <label className="block text-[7.5px] text-neutral-450 font-extrabold uppercase tracking-widest leading-none">
+                                  <label className="block text-[7.5px] text-white/40 font-extrabold uppercase tracking-widest leading-none">
                                     Risk / Cycle %
                                   </label>
                                   <input
@@ -3278,13 +3278,13 @@ Risk Reminder: ${riskReminder}`;
                                         riskPercent: val
                                       });
                                     }}
-                                    className="w-full h-8 bg-[#07090b] border border-neutral-850 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-emerald-500 font-bold"
+                                    className="w-full h-8 bg-white/5 border border-white/10 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-white font-bold"
                                     placeholder="1.0"
                                   />
                                 </div>
 
                                 <div className="space-y-1">
-                                  <label className="block text-[7.5px] text-neutral-450 font-extrabold uppercase tracking-widest leading-none">
+                                  <label className="block text-[7.5px] text-white/40 font-extrabold uppercase tracking-widest leading-none">
                                     Drawdown %
                                   </label>
                                   <input
@@ -3300,39 +3300,39 @@ Risk Reminder: ${riskReminder}`;
                                         maxDailyLossPercent: val
                                       });
                                     }}
-                                    className="w-full h-8 bg-[#07090b] border border-neutral-850 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-emerald-500 font-bold"
+                                    className="w-full h-8 bg-white/5 border border-white/10 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-white font-bold"
                                     placeholder="5.0"
                                   />
                                 </div>
                               </div>
 
                               <div className="grid grid-cols-2 gap-3 font-mono">
-                                <div className="border border-neutral-900 bg-neutral-950/60 p-2 rounded">
-                                  <span className="block text-[8px] text-neutral-500 font-bold uppercase mb-0.5">Maximum Risk Exposure</span>
-                                  <span className="font-extrabold text-[#10b981] text-xs">${maxRiskCurrencyAmount.toLocaleString()} ({riskSettings.riskPercent || 1.0}%)</span>
+                                <div className="border border-white/10 bg-white/5 p-2 rounded">
+                                  <span className="block text-[8px] text-white/40 font-bold uppercase mb-0.5">Maximum Risk Exposure</span>
+                                  <span className="font-extrabold text-white text-xs">${maxRiskCurrencyAmount.toLocaleString()} ({riskSettings.riskPercent || 1.0}%)</span>
                                 </div>
-                                <div className="border border-neutral-900 bg-neutral-950/60 p-2 rounded">
-                                  <span className="block text-[8px] text-neutral-500 font-bold uppercase mb-0.5">Max Daily Loss Allowed</span>
-                                  <span className="font-extrabold text-rose-400 text-xs">${maxDailyLossAmount.toLocaleString()} ({riskSettings.maxDailyLossPercent || 5.0}%)</span>
+                                <div className="border border-white/10 bg-white/5 p-2 rounded">
+                                  <span className="block text-[8px] text-white/40 font-bold uppercase mb-0.5">Max Daily Loss Allowed</span>
+                                  <span className="font-extrabold text-white/50 text-xs">${maxDailyLossAmount.toLocaleString()} ({riskSettings.maxDailyLossPercent || 5.0}%)</span>
                                 </div>
                               </div>
 
                               <div className="grid grid-cols-2 gap-3 font-mono pt-0.5">
-                                <div className="border border-neutral-900 bg-neutral-950/65 p-2 rounded col-span-2">
-                                  <span className="block text-[8px] text-neutral-500 font-semibold uppercase mb-0.5">Recommended Position Size</span>
+                                <div className="border border-white/10 bg-white/5 p-2 rounded col-span-2">
+                                  <span className="block text-[8px] text-white/40 font-semibold uppercase mb-0.5">Recommended Position Size</span>
                                   <div className="flex items-baseline justify-between">
-                                    <span className="font-black text-amber-400 text-sm">
+                                    <span className="font-black text-white text-sm">
                                       {slPipsComputed > 0 ? `${roundedLots.toFixed(2)} Lots` : "N/A"}
                                     </span>
-                                    <span className="text-[10px] font-medium text-neutral-450 font-sans">
+                                    <span className="text-[10px] font-medium text-white/40 font-sans">
                                       {slPipsComputed > 0 ? `(${roundedUnits.toLocaleString()} units)` : "Awaiting non-zero stop loss"}
                                     </span>
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="bg-neutral-950/90 border border-neutral-900/60 px-3 py-2 rounded-lg text-[10px] leading-relaxed text-neutral-400">
-                                <span className="text-neutral-300 font-semibold">Live Trade Parameters Checked:</span> Entry <span className="text-white font-mono">{nEntry.toFixed(prec)}</span> | SL <span className="text-rose-400 font-mono">{nSl.toFixed(prec)}</span> ({slPipsComputed} pips gap) | TP <span className="text-emerald-400 font-mono">{nTp.toFixed(prec)}</span> ({tpPipsComputed} pips gap) | Risk-to-Reward Ratio <span className="text-amber-400 font-mono font-bold">1:{rrRatio}</span> (Preferred: 1:{riskSettings.preferredRr}).
+                              <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-lg text-[10px] leading-relaxed text-white/50">
+                                <span className="text-white font-semibold">Live Trade Parameters Checked:</span> Entry <span className="text-white font-mono">{nEntry.toFixed(prec)}</span> | SL <span className="text-white/70 font-mono">{nSl.toFixed(prec)}</span> ({slPipsComputed} pips gap) | TP <span className="text-white font-mono">{nTp.toFixed(prec)}</span> ({tpPipsComputed} pips gap) | Risk-to-Reward Ratio <span className="text-white font-mono font-bold">1:{rrRatio}</span> (Preferred: 1:{riskSettings.preferredRr}).
                               </div>
                             </div>
                           </div>
@@ -3340,12 +3340,12 @@ Risk Reminder: ${riskReminder}`;
                       })()}
 
                       {/* Interactive Actions Grid */}
-                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-neutral-800/60">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-white/10">
                         {/* Auto Heal level button */}
                         <button
                           type="button"
                           onClick={handlePerfectHeal}
-                          className="px-2.5 py-1 text-[10px] font-mono font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 hover:border-amber-500/40 rounded transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                          className="px-2.5 py-1 text-[10px] font-mono font-bold bg-white text-black hover:bg-white/90 border border-white rounded transition-all cursor-pointer flex items-center gap-1 shrink-0"
                           title="Auto-reconstruct S/L at 25 pips and T/P at 50 pips, complying fully with broker limits"
                         >
                           <i className="ph ph-lightning text-[11px]" />
@@ -3356,17 +3356,17 @@ Risk Reminder: ${riskReminder}`;
                           <button
                             type="button"
                             onClick={() => copyText(adjustedSl, "SL")}
-                            className="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 rounded px-2.5 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
+                            className="bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 rounded px-2.5 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
                           >
-                            <i className={copySlFeedback ? "ph ph-check text-emerald-400" : "ph ph-copy"} />
+                            <i className={copySlFeedback ? "ph ph-check text-white" : "ph ph-copy"} />
                             <span>{copySlFeedback ? "SL Copied!" : "Copy SL"}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => copyText(adjustedTp, "TP")}
-                            className="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 rounded px-2.5 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
+                            className="bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 rounded px-2.5 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
                           >
-                            <i className={copyTpFeedback ? "ph ph-check text-emerald-400" : "ph ph-copy"} />
+                            <i className={copyTpFeedback ? "ph ph-check text-white" : "ph ph-copy"} />
                             <span>{copyTpFeedback ? "TP Copied!" : "Copy TP"}</span>
                           </button>
                           <button
@@ -3375,49 +3375,49 @@ Risk Reminder: ${riskReminder}`;
                               const pasteBlock = `PAIR: ${symbolTag}\nBIAS: ${analysisReport.signal}\nENTRY: ${adjustedEntry}\nT/P: ${adjustedTp}\nS/L: ${adjustedSl}\nR:R: 1:${rrRatio}`;
                               copyText(pasteBlock, "ALL");
                             }}
-                            className="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 rounded px-2 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
+                            className="bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 rounded px-2 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
                             title="Copy complete parameters to clipboard for quick paste"
                           >
-                            <i className={copyAllFeedback ? "ph ph-check text-emerald-400" : "ph ph-copy"} />
+                            <i className={copyAllFeedback ? "ph ph-check text-white" : "ph ph-copy"} />
                             <span>{copyAllFeedback ? "Copied All!" : "Copy Suite"}</span>
                           </button>
                         </div>
                       </div>
 
                       {/* Collapse documentation on why MT5 errors occur */}
-                      <div className="border-t border-neutral-800/40 pt-1.5">
+                      <div className="border-t border-white/10 pt-1.5">
                         <button
                           type="button"
                           onClick={() => setShowMT5Docs(!showMT5Docs)}
-                          className="w-full text-left flex justify-between items-center text-[9px] text-neutral-500 hover:text-neutral-400 font-mono tracking-wider font-semibold focus:outline-none uppercase"
+                          className="w-full text-left flex justify-between items-center text-[9px] text-white/55 hover:text-white font-mono tracking-wider font-semibold focus:outline-none uppercase"
                         >
                           <span>💡 Why does MT5 say "Invalid Take Profit or Stop Loss"?</span>
                           <i className={`ph ${showMT5Docs ? "ph-caret-up" : "ph-caret-down"} text-[10px]`} />
                         </button>
                         
                         {showMT5Docs && (
-                          <div className="mt-2 text-[10px] text-neutral-400 leading-relaxed font-sans bg-black/40 rounded border border-neutral-900 p-2 text-left space-y-2.5">
+                          <div className="mt-2 text-[10px] text-white/70 leading-relaxed font-sans bg-white/5 rounded border border-white/10 p-2 text-left space-y-2.5">
                             <div>
-                              <strong className="text-neutral-300 text-[10px] font-semibold">1. Reversed Direction Settings:</strong>
-                              <p className="text-neutral-400/95 text-[10px] mt-0.5 ml-1">
+                              <strong className="text-white text-[10px] font-semibold">1. Reversed Direction Settings:</strong>
+                              <p className="text-white/60 text-[10px] mt-0.5 ml-1">
                                 MT5 enforces strict mathematical coordinates:
-                                <span className="block font-mono text-[9px] text-[#aaa] mt-0.5">• BUY: Stop Loss must be BELOW Entry. Take Profit must be ABOVE Entry.</span>
-                                <span className="block font-mono text-[9px] text-[#aaa] mt-0.5">• SELL: Stop Loss must be ABOVE Entry. Take Profit must be BELOW Entry.</span>
+                                <span className="block font-mono text-[9px] text-white/50 mt-0.5">• BUY: Stop Loss must be BELOW Entry. Take Profit must be ABOVE Entry.</span>
+                                <span className="block font-mono text-[9px] text-white/50 mt-0.5">• SELL: Stop Loss must be ABOVE Entry. Take Profit must be BELOW Entry.</span>
                               </p>
                             </div>
                             <div>
-                              <strong className="text-neutral-300 text-[10px] font-semibold">2. Broker "Stop Level" Distance:</strong>
-                              <p className="text-neutral-300/95 text-[10px] mt-0.5 ml-1">
+                              <strong className="text-white text-[10px] font-semibold">2. Broker "Stop Level" Distance:</strong>
+                              <p className="text-white/60 text-[10px] mt-0.5 ml-1">
                                 Every Forex broker sets a minimum spread offset (typically 10-30 points / 1-3 pips). If your SL or TP is too close to your entry price, MT5 rejects the order request. Keep levels 15+ pips away to guarantee safe execution!
                               </p>
                             </div>
                             <div>
-                              <strong className="text-neutral-300 text-[10px] font-semibold">3. Incorrect Digit Scale:</strong>
-                              <p className="text-neutral-300/95 text-[10px] mt-0.5 ml-1">
+                              <strong className="text-white text-[10px] font-semibold">3. Incorrect Digit Scale:</strong>
+                              <p className="text-white/60 text-[10px] mt-0.5 ml-1">
                                 Standard currency pairs accept exactly 5 decimal places. JPY pairs accept 3 decimal places. Commodities like Gold accept 2 decimal places. Entering extra digits generates rejected requests.
                               </p>
                             </div>
-                            <div className="text-[9px] text-amber-500 italic bg-amber-500/5 p-1.5 border border-amber-500/10 rounded">
+                            <div className="text-[9px] text-white italic bg-white/5 p-1.5 border border-white/10 rounded">
                               Pro Tip: Tap <strong>⚡ Auto-Optimize Levels</strong> above to automatically resolve any direction, distance, and precision discrepancies instantly!
                             </div>
                           </div>
@@ -3429,25 +3429,25 @@ Risk Reminder: ${riskReminder}`;
               })()}
 
               {analysisReport.signal === "FAILED" && (
-                <div className="text-rose-400 font-semibold text-xs flex items-center gap-1.5 pt-1">
+                <div className="text-white/60 font-semibold text-xs flex items-center gap-1.5 pt-1">
                   <span className="animate-pulse">●</span> Possible cause identified by Gaks System Diagnostics
                 </div>
               )}
 
-              <p className="text-xs text-neutral-400 leading-relaxed font-sans mt-2 whitespace-pre-line">
+              <p className="text-xs text-white/70 leading-relaxed font-sans mt-2 whitespace-pre-line">
                 {analysisReport.reason}
               </p>
             </div>
           )}
 
           {analysisReport && analysisReport.signal !== "FAILED" && (
-            <div className="card p-5 border border-amber-500/20 bg-black/60 shadow-[0_0_20px_rgba(245,158,11,0.02)] rounded-xl space-y-4 animate-fadeIn mb-4" id="watchlist-alert-builder">
-              <div className="flex justify-between items-center pb-2 border-b border-neutral-900">
+            <div className="card p-5 border border-white/10 bg-[#0F0F0F] rounded-xl space-y-4 animate-fadeIn mb-4" id="watchlist-alert-builder">
+              <div className="flex justify-between items-center pb-2 border-b border-white/10">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono uppercase tracking-widest text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded">
+                  <span className="text-xs font-mono uppercase tracking-widest text-white font-bold bg-white/10 px-2 py-0.5 rounded">
                     Institutional Alert Setup
                   </span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                 </div>
                 <span className="text-[10px] text-neutral-550 font-mono">Watchlist System</span>
               </div>
@@ -3559,14 +3559,14 @@ Risk Reminder: ${riskReminder}`;
 
               <button
                 onClick={handleCreateInstitutionalAlert}
-                className="w-full py-2.5 bg-neutral-900 border border-neutral-800 hover:border-amber-500/30 hover:bg-[#151515] hover:text-amber-400 rounded-lg text-xs font-bold text-neutral-250 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md select-none font-sans"
+                className="w-full py-2.5 bg-white hover:bg-white/90 rounded-lg text-xs font-bold text-[#0F0F0F] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md select-none font-sans"
               >
                 <i className="ph ph-bell-plus text-sm" /> Establish Watchlist Setup Alert
               </button>
 
               {alertSuccessMsg && (
-                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2 animate-fadeIn">
-                  <i className="ph ph-check-circle text-base text-emerald-500" />
+                <div className="p-3 rounded-lg bg-white/5 border border-white/20 text-white text-xs flex items-center gap-2 animate-fadeIn font-sans font-medium">
+                  <i className="ph ph-check-circle text-base text-white" />
                   <span>{alertSuccessMsg}</span>
                 </div>
               )}
@@ -3676,7 +3676,7 @@ Risk Reminder: ${riskReminder}`;
                   onClick={() => setAlertDirection("above")}
                   className={`h-11 py-2 px-4 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all border flex items-center justify-center gap-1.5 ${
                     alertDirection === "above"
-                      ? "bg-[#142A1D]/80 border-green-500/50 text-green-400 font-bold"
+                      ? "bg-white text-black font-bold border-white"
                       : "bg-transparent border-neutral-900/60 text-neutral-500 hover:text-neutral-300 hover:border-neutral-850"
                   }`}
                 >
@@ -3687,7 +3687,7 @@ Risk Reminder: ${riskReminder}`;
                   onClick={() => setAlertDirection("below")}
                   className={`h-11 py-2 px-4 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all border flex items-center justify-center gap-1.5 ${
                     alertDirection === "below"
-                      ? "bg-[#142A1D]/80 border-green-500/50 text-green-400 font-bold"
+                      ? "bg-white text-black font-bold border-white"
                       : "bg-transparent border-neutral-900/60 text-neutral-500 hover:text-neutral-300 hover:border-neutral-850"
                   }`}
                 >
@@ -3790,7 +3790,7 @@ Risk Reminder: ${riskReminder}`;
                       </button>
                       <button
                         type="button"
-                        className="cursor-pointer hover:text-rose-500 bg-transparent border-none p-1 flex items-center justify-center animate-fadeIn"
+                        className="cursor-pointer text-white/50 hover:text-white bg-transparent border-none p-1 flex items-center justify-center animate-fadeIn"
                         onClick={() => handleDeleteTriggerAlert(alertItem.id)}
                       >
                         <i className="ph ph-trash text-xs" />
@@ -3817,10 +3817,10 @@ Risk Reminder: ${riskReminder}`;
                   <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold">
                     Heuristic Engine
                   </span>
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black border border-neutral-800 text-[10px] font-mono text-neutral-300">
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black border border-white/10 text-[10px] font-mono text-white/70">
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
-                        watcherEnabled ? "bg-emerald-500 animate-pulse" : "bg-neutral-500"
+                        watcherEnabled ? "bg-white animate-pulse" : "bg-white/40"
                       }`}
                     />
                     <span>{heuristicStatus}</span>
@@ -3828,12 +3828,12 @@ Risk Reminder: ${riskReminder}`;
                 </div>
               </div>
 
-              <div className="flex items-center justify-between py-2 border-y border-neutral-900 mb-4">
+              <div className="flex items-center justify-between py-2 border-y border-white/10 mb-4">
                 <div>
                   <span className="block text-sm font-semibold text-white">
                     Enable AI Heuristics Watcher
                   </span>
-                  <span className="text-[11px] text-neutral-500 block mt-0.5 font-sans">
+                  <span className="text-[11px] text-white/50 block mt-0.5 font-sans">
                     Autonomous support/resist scanner & setup alert builder
                   </span>
                 </div>
@@ -3844,31 +3844,31 @@ Risk Reminder: ${riskReminder}`;
                     checked={watcherEnabled}
                     onChange={handleToggleWatcher}
                   />
-                  <div className="w-11 h-6 bg-neutral-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-neutral-200 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black" />
+                  <div className="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white/60 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black" />
                 </label>
               </div>
 
               <div className="flex items-center justify-between text-xs font-mono text-neutral-500">
-                <span className="text-neutral-300">
+                <span className="text-white/60">
                   Currently watching {monitoredPairs.length} markets
                 </span>
-                <span className="text-[10px] text-neutral-600">Latency: 3.8ms</span>
+                <span className="text-[10px] text-white/30">Latency: 3.8ms</span>
               </div>
             </div>
 
             {/* 🏛️ INSTITUTIONAL ALERT SYSTEM WATCHLIST & MONITOR */}
-            <div className="card p-5 border border-amber-500/20 bg-[#0d0d0d] shadow-2xl relative overflow-hidden" id="institutional-alert-dashboard">
-              <div className="absolute top-0 right-0 px-2 py-0.5 bg-amber-500/10 border-l border-b border-neutral-850 text-[8px] font-mono font-bold tracking-widest text-amber-500 rounded-bl uppercase select-none">
+            <div className="card p-5 border border-white/10 bg-[#0F0F0F] relative overflow-hidden" id="institutional-alert-dashboard">
+              <div className="absolute top-0 right-0 px-2 py-0.5 bg-white/10 border-l border-b border-white/10 text-[8px] font-mono font-bold tracking-widest text-white rounded-bl uppercase select-none">
                 Enterprise Core
               </div>
 
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono uppercase tracking-widest text-amber-500 font-bold">
+                  <span className="text-xs font-mono uppercase tracking-widest text-white font-bold">
                     🏛️ Institutional Alert Center
                   </span>
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black border border-neutral-800 text-[10px] font-mono text-neutral-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black border border-white/10 text-[10px] font-mono text-white/70">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                     <span>Watchlist Config</span>
                   </div>
                 </div>
@@ -3884,8 +3884,8 @@ Risk Reminder: ${riskReminder}`;
                       key={setup.id} 
                       className={`border rounded-xl p-4 transition-all duration-300 relative ${
                         isSatisfied 
-                          ? "bg-amber-950/10 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.03)]" 
-                          : "bg-black/60 border-neutral-900 hover:border-neutral-800"
+                          ? "bg-white/5 border-white text-white" 
+                          : "bg-white/[0.02] border-white/10 hover:border-white/20"
                       }`}
                     >
                       {/* Card Header */}
@@ -3907,18 +3907,18 @@ Risk Reminder: ${riskReminder}`;
 
                         <div className="flex items-center gap-2">
                           {isSatisfied ? (
-                            <span className="text-[10px] font-mono font-bold bg-amber-500 text-black px-2 py-0.5 rounded tracking-wide shadow-sm animate-pulse">
+                            <span className="text-[10px] font-mono font-bold bg-white text-black px-2 py-0.5 rounded tracking-wide shadow-sm animate-pulse">
                               🔥 TRIGGERED
                             </span>
                           ) : (
-                            <span className="text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded tracking-wide">
+                            <span className="text-[10px] font-mono font-bold bg-[#0F0F0F] text-white border border-white/20 px-2 py-0.5 rounded tracking-wide">
                               ● MONITORING
                             </span>
                           )}
 
                           <button
                             onClick={() => handleRemoveInstitutionalAlert(setup.id)}
-                            className="text-neutral-500 hover:text-rose-500 p-1 rounded hover:bg-neutral-950 transition-colors cursor-pointer border-none bg-transparent"
+                            className="text-white/40 hover:text-white p-1 rounded hover:bg-white/5 transition-colors cursor-pointer border-none bg-transparent"
                             title="Decommission monitor"
                           >
                             <i className="ph ph-trash text-sm" />
@@ -3928,26 +3928,26 @@ Risk Reminder: ${riskReminder}`;
 
                       {/* Setup Info */}
                       <div className="grid grid-cols-3 gap-2.5 mb-3">
-                        <div className="bg-[#080808] border border-neutral-900/60 p-2 rounded">
-                          <span className="block text-[8px] font-mono text-neutral-500 uppercase tracking-widest mb-0.5">VERDICT</span>
+                        <div className="bg-white/5 border border-white/10 p-2 rounded">
+                          <span className="block text-[8px] font-mono text-white/40 uppercase tracking-widest mb-0.5">VERDICT</span>
                           <span className={`text-[11px] font-bold font-mono ${
-                            setup.verdict === "BUY" ? "text-emerald-400" : setup.verdict === "SELL" ? "text-rose-400" : "text-amber-400"
+                            setup.verdict === "BUY" ? "text-white" : setup.verdict === "SELL" ? "text-white/70" : "text-white/50"
                           }`}>{setup.verdict}</span>
                         </div>
-                        <div className="bg-[#080808] border border-neutral-900/60 p-2 rounded">
-                          <span className="block text-[8px] font-mono text-neutral-500 uppercase tracking-widest mb-0.5">GRADE</span>
-                          <span className="text-[11px] font-bold font-mono text-neutral-100">{setup.qualityScore}</span>
+                        <div className="bg-white/5 border border-white/10 p-2 rounded">
+                          <span className="block text-[8px] font-mono text-white/40 uppercase tracking-widest mb-0.5">GRADE</span>
+                          <span className="text-[11px] font-bold font-mono text-white">{setup.qualityScore}</span>
                         </div>
-                        <div className="bg-[#080808] border border-neutral-900/60 p-2 rounded">
-                          <span className="block text-[8px] font-mono text-neutral-500 uppercase tracking-widest mb-0.5">TARGET AT</span>
-                          <span className="text-[11px] font-bold font-mono text-neutral-350 truncate">{matchingAlert?.alertTypes?.slice(0, 1)?.[0] || 'Trigger'}</span>
+                        <div className="bg-white/5 border border-white/10 p-2 rounded">
+                          <span className="block text-[8px] font-mono text-white/40 uppercase tracking-widest mb-0.5">TARGET AT</span>
+                          <span className="text-[11px] font-bold font-mono text-white/70 truncate">{matchingAlert?.alertTypes?.slice(0, 1)?.[0] || 'Trigger'}</span>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5 text-[11px] text-neutral-350 leading-relaxed font-sans pb-3 border-b border-neutral-900/50">
+                      <div className="space-y-1.5 text-[11px] text-white/70 leading-relaxed font-sans pb-3 border-b border-white/10">
                         <div>
-                          <strong className="text-neutral-410 font-mono text-[9px] uppercase tracking-wider block">Key Levels:</strong>
-                          <span className="font-mono text-neutral-400">{setup.keyLevels}</span>
+                          <strong className="text-white/40 font-mono text-[9px] uppercase tracking-wider block">Key Levels:</strong>
+                          <span className="font-mono text-white/85">{setup.keyLevels}</span>
                         </div>
                         <div className="mt-1.5">
                           <strong className="text-neutral-410 font-mono text-[9px] uppercase tracking-wider block">Entry Rules:</strong>
@@ -3969,48 +3969,47 @@ Risk Reminder: ${riskReminder}`;
 
                       {/* Satisfied Outcome Block */}
                       {isSatisfied && matchingAlert && (
-                        <div className="mt-3.5 space-y-3 pt-1 border-t border-dashed border-amber-500/10">
-                          <div className="p-3 bg-amber-500/5 rounded-lg border border-amber-500/10 space-y-2">
-                            <span className="text-[10px] font-bold font-mono text-amber-400 uppercase tracking-widest block font-sans">
+                        <div className="mt-3.5 space-y-3 pt-1 border-t border-dashed border-white/10 font-sans">
+                          <div className="p-3 bg-white/5 rounded-lg border border-white/10 space-y-2">
+                            <span className="text-[10px] font-bold font-mono text-white uppercase tracking-widest block">
                               🔔 TRIGGER RE-EVALUATION LOGS
                             </span>
-                            <p className="text-[11px] text-neutral-300 leading-relaxed m-0 font-sans">
+                            <p className="text-[11px] text-white/80 leading-relaxed m-0">
                               <strong>Cause:</strong> {matchingAlert.triggerExplanation}
                             </p>
-                            <p className="text-[11px] text-neutral-300 leading-relaxed m-0 font-sans">
-                              <strong>Re-evaluated Trade Quality Score:</strong> <span className="font-mono text-amber-400 font-bold">{matchingAlert.updatedTradeQualityScore}</span> (Upgraded via Real-time order books flow)
+                            <p className="text-[11px] text-white/80 leading-relaxed m-0">
+                              <strong>Re-evaluated Trade Quality Score:</strong> <span className="font-mono text-white font-bold">{matchingAlert.updatedTradeQualityScore}</span> (Upgraded via Real-time order books flow)
                             </p>
-                            <p className="text-[11px] text-neutral-300 leading-relaxed m-0 font-sans">
+                            <p className="text-[11px] text-white/80 leading-relaxed m-0">
                               <strong>Institutional Narrative:</strong> {matchingAlert.institutionalNarrative}
                             </p>
                           </div>
 
                           {/* Raw Output Terminal Block */}
-                          <div className="bg-[#050505] p-3.5 rounded-lg border border-neutral-900 font-mono text-xs text-neutral-350 space-y-1 relative">
-                            <div className="absolute top-2 right-2 flex gap-1.5">
+                          <div className="bg-[#0F0F0F] p-3.5 rounded-lg border border-white/10 font-mono text-xs text-white/70 space-y-1 relative">
+                            <div className="absolute top-2 right-2 flex gap-1.5 font-mono">
                               <button 
                                 onClick={() => {
                                   if (matchingAlert.rawFormattedAlert) {
                                     navigator.clipboard.writeText(matchingAlert.rawFormattedAlert);
-                                    alert("Alert text copied to clipboard successfully!");
                                   }
                                 }}
-                                className="px-2 py-0.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded font-mono text-[9px] text-neutral-400 hover:text-white cursor-pointer transition-all"
+                                className="px-2 py-0.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded font-mono text-[9px] text-white/60 hover:text-white cursor-pointer transition-all"
                               >
                                 Copy Raw text
                               </button>
                             </div>
-                            <span className="text-[9px] text-neutral-550 uppercase tracking-widest block mb-2 border-b border-neutral-900 pb-1 font-bold">
+                            <span className="text-[9px] text-white/40 uppercase tracking-widest block mb-2 border-b border-white/10 pb-1 font-bold">
                               PRE-FORMATTED OUT-INTELLIGENCE ALERT MESSAGE
                             </span>
-                            <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-neutral-300 break-all select-all m-0">
+                            <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/80 break-all select-all m-0">
                               {matchingAlert.rawFormattedAlert}
                             </pre>
                           </div>
 
                           {/* No-auto fill warning - review of decision */}
-                          <div className="p-2.5 bg-rose-500/5 rounded border border-rose-955/65 text-[11px] text-rose-300/90 leading-snug flex items-start gap-2 select-none">
-                            <i className="ph ph-warning text-sm text-rose-400 mt-0.5" />
+                          <div className="p-2.5 bg-white/5 rounded border border-white/15 text-[11px] text-white/80 leading-snug flex items-start gap-2 select-none">
+                            <i className="ph ph-warning text-sm text-white mt-0.5" />
                             <div>
                               <strong>Security Reminder:</strong> Saved setups do NOT auto-execute market entries. Review all triggers, narrative shifts, and risk settings before processing trading choices manual execution.
                             </div>
@@ -4023,7 +4022,7 @@ Risk Reminder: ${riskReminder}`;
                         <div className="mt-3.5 pt-3 border-t border-neutral-900/80 flex justify-end">
                           <button
                             onClick={() => triggerInstitutionalAlertItem(matchingAlert.id)}
-                            className="cursor-pointer bg-neutral-900 hover:bg-amber-500 text-neutral-300 hover:text-black border border-neutral-850 hover:border-amber-500 px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center gap-1 select-none"
+                            className="cursor-pointer bg-white text-black hover:bg-white/90 border border-white px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center gap-1 select-none"
                           >
                             <i className="ph ph-lightning text-xs" /> Simulate Entry Trigger Conditions
                           </button>
@@ -4065,8 +4064,8 @@ Risk Reminder: ${riskReminder}`;
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold font-mono text-white">{symbol}</span>
-                          <span className="h-1 w-1 rounded-full bg-emerald-500" />
-                          <span className="text-[9px] font-mono text-neutral-500 font-bold">
+                          <span className="h-1 w-1 rounded-full bg-white" />
+                          <span className="text-[9px] font-mono text-white/50 font-bold">
                             MONITORING
                           </span>
                         </div>
@@ -4077,7 +4076,9 @@ Risk Reminder: ${riskReminder}`;
 
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <span className="text-xs font-mono font-bold text-white block">
+                          <span className={`text-xs font-mono font-bold block ${
+                            positiveTrend ? "text-emerald-400" : "text-rose-400"
+                          }`}>
                             {formatPrice(symbol, rateVal)}
                           </span>
                           <span
@@ -4092,7 +4093,7 @@ Risk Reminder: ${riskReminder}`;
                         </div>
                         <button
                           onClick={() => handleRemoveMonitoredPair(symbol)}
-                          className="text-neutral-500 hover:text-rose-500 p-1 rounded hover:bg-neutral-950 transition-all cursor-pointer border-none bg-transparent"
+                          className="text-white/40 hover:text-white p-1 rounded hover:bg-white/5 transition-all cursor-pointer border-none bg-transparent"
                           title="Remove monitored pair"
                         >
                           <i className="ph ph-trash text-sm" />
@@ -4229,7 +4230,7 @@ Risk Reminder: ${riskReminder}`;
                 <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold">
                   Live Scan Dashboard
                 </span>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
               </div>
 
               <div className="space-y-3.5">
@@ -4376,33 +4377,33 @@ Risk Reminder: ${riskReminder}`;
                     };
                     setRecentScannerAlerts((history) => [warning, ...history]);
                   }}
-                  className="w-full py-1.5 border border-dashed border-neutral-800 hover:border-neutral-550 bg-neutral-950 font-mono text-[10px] text-neutral-410 hover:text-white rounded-lg transition-colors cursor-pointer"
-                >
-                  + Simulate Live Alert Trigger Event
-                </button>
-                {recentScannerAlerts.length > 0 && (
-                  <button
-                    onClick={() => setRecentScannerAlerts([])}
-                    className="py-1.5 px-3 border border-neutral-900 bg-neutral-955 text-neutral-600 hover:text-rose-500 text-[10px] font-mono rounded-lg transition-all cursor-pointer"
-                    title="Clear database logs"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            </div>
-
-        </div>
-      </div>
-
-        {/* --- API KEYS CLUSTER PAGE --- */}
-        <div id="keys" className={`page ${currentPage === "keys" ? "active" : ""}`}>
-          <div className="flex flex-col gap-1 mb-6">
-            <h2 className="text-xl font-bold tracking-tight text-white m-[0px] flex items-center gap-2">
-              <i className="ph ph-heartbeat text-emerald-400" />
-              Key Health Status
-            </h2>
-            <p className="text-[11px] text-neutral-500 m-[0px] font-sans">
+                   className="w-full py-1.5 border border-dashed border-white/15 hover:border-white bg-[#0F0F0F] font-mono text-[10px] text-white/50 hover:text-white rounded-lg transition-colors cursor-pointer"
+                 >
+                   + Simulate Live Alert Trigger Event
+                 </button>
+                 {recentScannerAlerts.length > 0 && (
+                   <button
+                     onClick={() => setRecentScannerAlerts([])}
+                     className="py-1.5 px-3 border border-white/10 bg-white/5 text-white/50 hover:text-white text-[10px] font-mono rounded-lg transition-all cursor-pointer"
+                     title="Clear database logs"
+                   >
+                     Clear
+                   </button>
+                 )}
+               </div>
+             </div>
+ 
+         </div>
+       </div>
+ 
+         {/* --- API KEYS CLUSTER PAGE --- */}
+         <div id="keys" className={`page ${currentPage === "keys" ? "active" : ""}`}>
+           <div className="flex flex-col gap-1 mb-6">
+             <h2 className="text-xl font-bold tracking-tight text-white m-[0px] flex items-center gap-2">
+               <i className="ph ph-heartbeat text-white" />
+               Key Health Status
+             </h2>
+            <p className="text-[11px] text-white/50 m-[0px] font-sans font-medium">
               Check your personal key connection, monitor active backup status, and view basic key statistics.
             </p>
           </div>
@@ -4410,17 +4411,17 @@ Risk Reminder: ${riskReminder}`;
           <div className="space-y-4">
             {/* Quick KPI stats row */}
             <div className="grid grid-cols-2 gap-3 font-sans">
-              <div className="card p-3 border border-neutral-800/60 bg-neutral-950/20 rounded-xl">
-                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Active Status</span>
-                <span className="text-sm font-bold text-neutral-100 flex items-center gap-1.5 font-mono">
-                  <span className={`h-2 w-2 rounded-full ${isKeyPoolExhausted && !userGeminiKey ? "bg-red-500" : "bg-emerald-500 animate-pulse"}`} />
+              <div className="card p-3 border border-white/10 bg-white/[0.02] rounded-xl">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-white/50 block mb-1">Active Status</span>
+                <span className="text-sm font-bold text-white flex items-center gap-1.5 font-mono">
+                  <span className={`h-2 w-2 rounded-full ${isKeyPoolExhausted && !userGeminiKey ? "bg-white/40" : "bg-white animate-pulse"}`} />
                   {userGeminiKey ? "Private Active" : isKeyPoolExhausted ? "All depleted" : "Backup active"}
                 </span>
               </div>
-              <div className="card p-3 border border-neutral-800/60 bg-neutral-950/20 rounded-xl">
-                <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-500 block mb-1">Backup Servers</span>
-                <span className="text-sm font-bold text-neutral-100 flex items-center gap-1.5 font-mono">
-                  <i className="ph ph-cloud-check text-emerald-400 text-sm" />
+              <div className="card p-3 border border-white/10 bg-white/[0.02] rounded-xl">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-white/50 block mb-1">Backup Servers</span>
+                <span className="text-sm font-bold text-white flex items-center gap-1.5 font-mono">
+                  <i className="ph ph-cloud-check text-white text-sm" />
                   {userGeminiKey ? "Optional" : isKeyPoolExhausted ? "0 Active" : `${keyPoolStatus?.keys.filter(k => k.status !== "exhausted").length || 0} Ready`}
                 </span>
               </div>
@@ -4502,7 +4503,7 @@ Risk Reminder: ${riskReminder}`;
                 </div>
 
                 {keyTestResult && (
-                  <div className={`p-3 rounded-xl border flex items-start gap-2.5 animate-fadeIn ${keyTestResult.success ? "bg-emerald-950/20 border-emerald-500/20 text-emerald-300" : "bg-rose-950/20 border-rose-500/20 text-rose-300"}`}>
+                  <div className={`p-3 rounded-xl border flex items-start gap-2.5 animate-fadeIn ${keyTestResult.success ? "bg-white/5 border-white text-white" : "bg-white/5 border-white/20 text-white/50"}`}>
                     <i className={`ph ${keyTestResult.success ? "ph-check-circle" : "ph-x-circle"} text-base mt-0.5`} />
                     <div className="text-[11px] leading-relaxed">
                       <span className="font-semibold block mb-0.5">{keyTestResult.success ? "Connection success" : "Connection failed"}</span>
@@ -4514,31 +4515,31 @@ Risk Reminder: ${riskReminder}`;
             </div>
 
             {/* Panel 2: Live Cluster Status Board */}
-            <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
-              <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-2 mb-3 leading-none font-sans">
-                <i className="ph ph-cloud-slash text-emerald-400" />
+            <div className="card p-5 border border-white/10 bg-[#0F0F0F] rounded-xl relative overflow-hidden font-sans">
+              <h3 className="text-xs font-bold text-white tracking-wide uppercase flex items-center gap-2 mb-3 leading-none">
+                <i className="ph ph-cloud-check text-white" />
                 Backup Network Status
               </h3>
-              <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
+              <p className="text-[11px] text-white/70 mt-0 mb-4 leading-relaxed">
                 Our backup system maintains 5 reserve servers. If standard rate limits are met, analyses auto-route with zero interruptions.
               </p>
 
               {keyPoolStatus && (
-                <div className="space-y-2.5 font-mono text-[11px] text-neutral-400 border border-neutral-900 bg-neutral-950/30 rounded-xl p-3 mb-4">
+                <div className="space-y-2.5 font-mono text-[11px] text-white/55 border border-white/10 bg-white/[0.02] rounded-xl p-3 mb-4">
                   {keyPoolStatus.keys.map((k) => (
-                    <div key={k.index} className="flex justify-between items-center border-b border-neutral-900/40 py-1.5 last:border-0 last:pb-0 first:pt-0">
+                    <div key={k.index} className="flex justify-between items-center border-b border-white/10 py-1.5 last:border-0 last:pb-0 first:pt-0">
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-red-500' : k.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-600'}`} />
-                        <span className="text-neutral-300 font-medium">Backup #{k.index + 1}</span>
-                        <span className="text-neutral-600 text-[10px] inline-block max-w-[120px] truncate">{k.masked}</span>
+                        <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-white/30' : k.status === 'active' ? 'bg-white animate-pulse' : 'bg-white/60'}`} />
+                        <span className="text-white font-medium font-sans">Backup #{k.index + 1}</span>
+                        <span className="text-white/40 text-[10px] inline-block max-w-[120px] truncate">{k.masked}</span>
                       </div>
                       <div>
                         {k.status === "active" ? (
-                          <span className="text-emerald-400 font-bold uppercase text-[9px] bg-emerald-950/50 border border-emerald-500/20 px-1.5 py-0.5 rounded">Active Standby</span>
+                          <span className="text-white font-bold uppercase text-[9px] bg-white/15 border border-white/20 px-1.5 py-0.5 rounded">Active Standby</span>
                         ) : k.status === "exhausted" ? (
-                          <span className="text-red-500 text-[9px] font-bold uppercase bg-rose-950/50 border border-red-500/10 px-1.5 py-0.5 rounded">Paused</span>
+                          <span className="text-white/50 text-[9px] font-bold uppercase bg-white/5 border border-white/10 px-1.5 py-0.5 rounded">Paused</span>
                         ) : (
-                          <span className="text-neutral-500 text-[9px] uppercase bg-neutral-900/60 border border-neutral-850 px-1.5 py-0.5 rounded">Standby</span>
+                          <span className="text-white/60 text-[9px] uppercase bg-white/5 border border-white/10 px-1.5 py-0.5 rounded">Standby</span>
                         )}
                       </div>
                     </div>
@@ -4564,25 +4565,25 @@ Risk Reminder: ${riskReminder}`;
             </div>
 
             {/* Panel 3: Dedicated User API Key Telemetry Dashboard */}
-            <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
+            <div className="card p-5 border border-white/10 bg-[#0F0F0F] rounded-xl relative overflow-hidden">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-neutral-200 tracking-wide uppercase flex items-center gap-2 m-0 leading-none font-sans">
-                  <i className="ph ph-heartbeat text-amber-500 animate-pulse text-sm" />
+                <h3 className="text-xs font-bold text-white tracking-wide uppercase flex items-center gap-2 m-0 leading-none font-sans font-semibold">
+                  <i className="ph ph-heartbeat text-white animate-pulse text-sm" />
                   Key Speed & Metrics
                 </h3>
-                <span className={`text-[9px] uppercase font-mono tracking-wider ${userGeminiKey ? "bg-emerald-950/40 text-emerald-400" : "bg-neutral-900 text-neutral-500"} px-2.5 py-1 rounded-full flex items-center gap-1.5 leading-none`}>
-                  <span className={`h-1.5 w-1.5 ${userGeminiKey ? "bg-emerald-400 animate-ping" : "bg-neutral-600"} rounded-full`} />
+                <span className={`text-[9px] uppercase font-mono tracking-wider ${userGeminiKey ? "bg-white/10 text-white" : "bg-[#0F0F0F] text-white/40"} px-2.5 py-1 border border-white/10 rounded-full flex items-center gap-1.5 leading-none`}>
+                  <span className={`h-1.5 w-1.5 ${userGeminiKey ? "bg-white animate-pulse" : "bg-white/30"} rounded-full`} />
                   {userGeminiKey ? "Live logs" : "Disabled"}
                 </span>
               </div>
 
               {!userGeminiKey.trim() ? (
-                <div className="p-6 text-center select-none bg-neutral-950/40 rounded-xl border border-neutral-900 flex flex-col items-center justify-center">
-                  <div className="h-10 w-10 rounded-full bg-neutral-900 flex items-center justify-center border border-neutral-800/80 mb-3 text-neutral-500">
+                <div className="p-6 text-center select-none bg-white/[0.02] rounded-xl border border-white/10 flex flex-col items-center justify-center font-sans">
+                  <div className="h-10 w-10 rounded-full bg-[#0F0F0F] flex items-center justify-center border border-white/10 mb-3 text-white/50 animate-pulse">
                     <i className="ph ph-lock text-lg" />
                   </div>
-                  <h4 className="text-xs font-semibold text-neutral-300 font-sans mb-1.5">Logs restricted</h4>
-                  <p className="text-[10px] text-neutral-500 font-sans leading-relaxed max-w-[280px] mb-4">
+                  <h4 className="text-xs font-semibold text-white mb-1.5 font-sans">Logs restricted</h4>
+                  <p className="text-[10px] text-white/50 leading-relaxed max-w-[280px] mb-4 font-sans">
                     Analytics are shown specifically for your custom credential key. Provide an API key above to view live speed details.
                   </p>
                   <button
@@ -4590,35 +4591,35 @@ Risk Reminder: ${riskReminder}`;
                       handleUserKeyChange("DEMO_KEY");
                       setKeyTestResult({ success: true, message: "Sandbox session initiated. Telemetry dashboard loaded successfully." });
                     }}
-                    className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-mono text-[9px] uppercase font-bold py-2 px-4 rounded-md transition-all flex items-center gap-1 cursor-pointer"
+                    className="bg-white hover:bg-white/90 border border-white text-[#0F0F0F] font-mono text-[9px] uppercase font-bold py-2 px-4 rounded-md transition-all flex items-center gap-1 cursor-pointer"
                   >
                     <i className="ph ph-plugs text-[11px]" />
                     Load sandbox demo logs
                   </button>
                 </div>
               ) : (
-                <div className="space-y-5">
-                  <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
+                <div className="space-y-5 font-sans">
+                  <p className="text-[11px] text-white/60 mt-0 mb-4 leading-relaxed font-sans">
                     Basic speed analytics and response logs for your personal key.
                   </p>
 
                   {/* Telemetry KPIs Overview */}
                   <div className="grid grid-cols-3 gap-2 font-mono text-[10px]">
-                    <div className="bg-neutral-950/60 border border-neutral-900 rounded-lg p-2.5 text-center flex flex-col justify-between">
-                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Average Speed</span>
-                      <span className={`font-bold text-xs ${userKeyTelemetry.averageLatency > 1800 ? "text-red-400" : userKeyTelemetry.averageLatency > 1300 ? "text-amber-400" : "text-emerald-450"}`}>
-                        {userKeyTelemetry.averageLatency || "---"} <span className="text-[8px] font-normal text-neutral-500 font-sans">ms</span>
+                    <div className="bg-white/[0.02] border border-white/10 rounded-lg p-2.5 text-center flex flex-col justify-between">
+                      <span className="text-white/50 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Average Speed</span>
+                      <span className={`font-bold text-xs ${userKeyTelemetry.averageLatency > 1800 ? "text-white/50" : userKeyTelemetry.averageLatency > 1300 ? "text-white/80" : "text-white"}`}>
+                        {userKeyTelemetry.averageLatency || "---"} <span className="text-[8px] font-normal text-white/50 font-sans">ms</span>
                       </span>
                     </div>
-                    <div className="bg-neutral-950/60 border border-neutral-900 rounded-lg p-2.5 text-center flex flex-col justify-between">
-                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Total Signals</span>
-                      <span className="text-neutral-200 font-bold text-xs">
+                    <div className="bg-white/[0.02] border border-white/10 rounded-lg p-2.5 text-center flex flex-col justify-between">
+                      <span className="text-white/50 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Total Signals</span>
+                      <span className="text-white font-bold text-xs">
                         {userKeyTelemetry.totalRequests}
                       </span>
                     </div>
-                    <div className="bg-neutral-950/60 border border-neutral-900 rounded-lg p-2.5 text-center flex flex-col justify-between">
-                      <span className="text-neutral-500 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Success SLA</span>
-                      <span className="text-emerald-400 font-bold text-xs">
+                    <div className="bg-white/[0.02] border border-white/10 rounded-lg p-2.5 text-center flex flex-col justify-between">
+                      <span className="text-white/50 text-[8px] uppercase tracking-wide block mb-1 font-sans font-medium">Success SLA</span>
+                      <span className="text-white font-bold text-xs">
                         {userKeyTelemetry.totalRequests > 0 
                           ? `${Math.round((userKeyTelemetry.successRequests / userKeyTelemetry.totalRequests) * 1000) / 10}%` 
                           : "100%"}
@@ -4627,14 +4628,14 @@ Risk Reminder: ${riskReminder}`;
                   </div>
 
                   {/* Telemetry Ping Stress-test and Stats */}
-                  <div className="bg-neutral-950/40 border border-neutral-900 rounded-xl p-3.5 space-y-3.5">
+                  <div className="bg-white/[0.01] border border-white/10 rounded-xl p-3.5 space-y-3.5">
                     <div className="flex justify-between items-center text-[10px] font-mono">
                       <div className="flex items-center gap-1.5">
-                        <i className="ph ph-info text-amber-500" />
-                        <span className="text-neutral-400 text-[9px] font-sans">Credential:</span>
-                        <span className="text-neutral-500 font-semibold uppercase">{userGeminiKey.substring(0, 8)}...</span>
+                        <i className="ph ph-info text-white" />
+                        <span className="text-white/50 text-[9px] font-sans">Credential:</span>
+                        <span className="text-white/70 font-semibold uppercase">{userGeminiKey.substring(0, 8)}...</span>
                       </div>
-                      <span className="text-neutral-600 font-sans">Direct link status</span>
+                      <span className="text-white/30 font-sans">Direct link status</span>
                     </div>
 
                     {/* Latency History Sparkline visualization */}
@@ -4644,19 +4645,19 @@ Risk Reminder: ${riskReminder}`;
                         <span>{userKeyTransactions.length > 0 ? "Last 12 checks" : "No checks recorded"}</span>
                       </div>
                       
-                      <div className="h-10 bg-neutral-950/80 border border-neutral-900/60 rounded-lg flex items-end gap-[3px] p-1.5 px-2 justify-between">
+                      <div className="h-10 bg-[#0F0F0F] border border-white/10 rounded-lg flex items-end gap-[3px] p-1.5 px-2 justify-between">
                         {userKeyTransactions.length === 0 ? (
-                          <span className="text-[9px] text-neutral-600 font-mono w-full text-center py-2 font-sans">Awaiting connection traffic...</span>
+                          <span className="text-[9px] text-white/40 font-mono w-full text-center py-2 font-sans">Awaiting connection traffic...</span>
                         ) : (
                           [...userKeyTransactions].reverse().slice(-12).map((tx, idx) => {
                             const heightPercent = Math.min(100, Math.max(10, (tx.latency / 2000) * 100));
-                            let barBg = "bg-emerald-500/80 hover:bg-emerald-450";
+                            let barBg = "bg-white hover:bg-white/90";
                             if (tx.status === "FAILED") {
-                              barBg = "bg-red-500/80 hover:bg-red-450";
+                              barBg = "bg-white/30 hover:bg-white/40";
                             } else if (tx.latency > 1500) {
-                              barBg = "bg-red-400/80 hover:bg-red-350";
+                              barBg = "bg-white/45 hover:bg-white/50";
                             } else if (tx.latency > 1100) {
-                              barBg = "bg-amber-450";
+                              barBg = "bg-white/70 hover:bg-white/80";
                             }
                             return (
                               <div 
@@ -4675,7 +4676,7 @@ Risk Reminder: ${riskReminder}`;
                     <button
                       onClick={handleTestUserKey}
                       disabled={isTestingKey}
-                      className="w-full bg-neutral-900 border border-neutral-800 hover:border-neutral-600 text-neutral-350 hover:text-white transition-all text-[10px] py-2 rounded-lg flex items-center justify-center gap-1.5 font-mono select-none"
+                      className="w-full bg-[#0F0F0F] border border-white/10 hover:border-white/30 text-white/70 hover:text-white transition-all text-[10px] py-2 rounded-lg flex items-center justify-center gap-1.5 font-mono select-none cursor-pointer"
                     >
                       {isTestingKey ? (
                         <>
@@ -4684,7 +4685,7 @@ Risk Reminder: ${riskReminder}`;
                         </>
                       ) : (
                         <>
-                          <i className="ph ph-activity text-emerald-400" />
+                          <i className="ph ph-activity text-white" />
                           <span>Check connection speed live</span>
                         </>
                       )}
@@ -4694,27 +4695,27 @@ Risk Reminder: ${riskReminder}`;
                   {/* Real-time Telemetry Transaction Feed Grid of recent calls */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-1">
-                      <i className="ph ph-list text-neutral-550 text-xs" />
-                      <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-450 font-sans">Recent logs</span>
+                      <i className="ph ph-list text-white/40 text-xs" />
+                      <span className="text-[10px] uppercase font-mono tracking-wider text-white/50 font-sans">Recent logs</span>
                     </div>
 
-                    <div className="border border-neutral-900 bg-neutral-950/20 rounded-xl overflow-hidden text-[10px] font-mono divide-y divide-neutral-900">
+                    <div className="border border-white/10 bg-white/[0.01] rounded-xl overflow-hidden text-[10px] font-mono divide-y divide-white/10">
                       {userKeyTransactions.length === 0 ? (
-                        <div className="text-center py-5 text-neutral-600 font-sans">
+                        <div className="text-center py-5 text-white/40 font-sans">
                           No logging traffic yet...
                         </div>
                       ) : (
                         userKeyTransactions.slice(0, 5).map((tx) => (
-                          <div key={tx.id} className="p-2.5 flex justify-between items-center bg-neutral-950/10">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-neutral-300 font-semibold font-sans">{tx.action}</span>
-                              <span className="text-neutral-600 text-[8px]">{tx.timestamp}</span>
+                          <div key={tx.id} className="p-2.5 flex justify-between items-center bg-white/[0.01]">
+                            <div className="flex flex-col gap-0.5 font-sans">
+                              <span className="text-white font-semibold">{tx.action}</span>
+                              <span className="text-white/40 text-[8px] font-mono">{tx.timestamp}</span>
                             </div>
-                            <div className="flex items-center gap-2.5 text-right">
-                              <div className="flex flex-col font-mono">
-                                <span className="text-neutral-450 font-bold">{tx.latency}ms</span>
+                            <div className="flex items-center gap-2.5 text-right font-sans">
+                              <div className="flex flex-col font-mono text-[9px]">
+                                <span className="text-white/60 font-bold">{tx.latency}ms</span>
                               </div>
-                              <span className={`px-1.5 py-0.5 text-[8px] font-bold uppercase rounded ${tx.status === "SUCCESS" ? "bg-emerald-950/80 text-emerald-400" : "bg-rose-950/80 text-red-400"}`}>
+                              <span className={`px-1.5 py-0.5 text-[8px] font-bold uppercase rounded ${tx.status === "SUCCESS" ? "bg-white/10 text-white" : "bg-white/5 text-slate-300"}`}>
                                 {tx.status === "SUCCESS" ? "OK" : "ERR"}
                               </span>
                             </div>
@@ -4780,8 +4781,8 @@ Risk Reminder: ${riskReminder}`;
       {historyModalOpen && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[999] flex flex-col justify-end sm:justify-center p-0 sm:p-4 animate-fadeIn">
           <div className="absolute inset-0 cursor-default" onClick={() => setHistoryModalOpen(false)} />
-          <div className="relative bg-neutral-950 border-t sm:border border-neutral-850 rounded-t-2xl sm:rounded-2xl w-full max-w-md mx-auto flex flex-col max-h-[85vh] sm:max-h-[80vh] shadow-2xl z-10 overflow-hidden">
-            <div className="flex justify-between items-center px-5 py-4 border-b border-neutral-900 bg-neutral-900/50">
+          <div className="relative bg-[#0F0F0F] border-t sm:border border-white/10 rounded-t-2xl sm:rounded-2xl w-full max-w-md mx-auto flex flex-col max-h-[85vh] sm:max-h-[80vh] shadow-2xl z-10 overflow-hidden">
+            <div className="flex justify-between items-center px-5 py-4 border-b border-white/10 bg-white/5">
               <div className="flex items-center gap-2">
                 <i className="ph ph-clock-counter-clockwise text-amber-500 text-lg" />
                 <div className="text-left">
@@ -4802,7 +4803,7 @@ Risk Reminder: ${riskReminder}`;
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {analysisHistory.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
-                  <div className="h-12 w-12 rounded-full bg-neutral-900 flex items-center justify-center text-neutral-600">
+                  <div className="h-12 w-12 rounded-full bg-white/5 flex items-center justify-center text-white/40">
                     <i className="ph ph-folder text-xl" />
                   </div>
                   <div>
@@ -4818,21 +4819,21 @@ Risk Reminder: ${riskReminder}`;
                 analysisHistory.map((item) => (
                   <div
                     key={item.id}
-                    className="group relative bg-[#121212] border border-neutral-900 hover:border-neutral-800 p-3 rounded-xl flex gap-3 transition-all cursor-pointer hover:bg-neutral-900/40 text-left cursor-pointer"
+                    className="group relative bg-[#0F0F0F] border border-white/10 hover:border-white/20 p-3 rounded-xl flex gap-3 transition-all cursor-pointer hover:bg-white/5 text-left"
                     onClick={() => {
                       setUploadedImage(item.image);
                       setAnalysisReport(item.report);
                       setAnalysisLogs([
                         `Restored cached analysis from ${item.timestamp}`,
                         'Strategy active during analysis: "' +
-                          (item.strategyUsed ? item.strategyUsed.substring(0, 35) + "..." : "Default SMC") +
-                          '"',
+                        (item.strategyUsed ? item.strategyUsed.substring(0, 35) + "..." : "Default SMC") +
+                        '"',
                         "Trigger levels & parameters fully reloaded."
                       ]);
                       setHistoryModalOpen(false);
                     }}
                   >
-                    <div className="w-16 h-16 rounded-lg bg-neutral-950 overflow-hidden flex-shrink-0 border border-neutral-800 flex items-center justify-center relative">
+                    <div className="w-16 h-16 rounded-lg bg-[#0F0F0F] overflow-hidden flex-shrink-0 border border-white/10 flex items-center justify-center relative">
                       <img
                         src={item.image}
                         alt="Restored Chart Thumbnail"
@@ -4843,34 +4844,32 @@ Risk Reminder: ${riskReminder}`;
                     <div className="flex-1 min-w-0 pr-6">
                       <div className="flex items-center gap-1.5 mb-1">
                         <span
-                          className={`px-1.5 py-0.5 text-[9px] font-black rounded font-mono ${
+                          className={`px-1.5 py-0.5 text-[9px] font-black rounded font-mono border ${
                             item.report.signal === "BUY"
-                              ? "bg-emerald-950/80 text-emerald-400 border border-emerald-500/20"
+                              ? "bg-white text-black border-white"
                               : item.report.signal === "SELL"
-                              ? "bg-rose-950/80 text-rose-400 border border-rose-500/20"
-                              : item.report.signal === "NO TRADE" || item.report.signal === "NO_TRADE"
-                              ? "bg-amber-950/80 text-amber-400 border border-amber-500/20"
-                              : "bg-neutral-800 text-neutral-300"
+                              ? "bg-white/10 text-white border-white/20"
+                              : "bg-white/5 text-white/50 border-white/10 border-dashed"
                           }`}
                         >
                           {item.report.signal}
                         </span>
-                        <span className="text-[10px] text-neutral-500 font-mono">
+                        <span className="text-[10px] text-white/50 font-mono">
                           Conf: {item.report.confidence}
                         </span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-neutral-500 mb-1">
+                      <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-white/50 mb-1">
                         <div>
-                          LVL: <span className="text-neutral-300 font-bold">{item.report.level}</span>
+                          LVL: <span className="text-white/80 font-bold">{item.report.level}</span>
                         </div>
                         <div>
-                          TP: <span className="text-emerald-500 font-bold">{item.report.tp}</span>
+                          TP: <span className="text-white font-bold">{item.report.tp}</span>
                         </div>
                         <div>
-                          SL: <span className="text-rose-500 font-bold">{item.report.sl}</span>
+                          SL: <span className="text-white/60 font-normal">{item.report.sl}</span>
                         </div>
                       </div>
-                      <div className="text-[10px] text-neutral-505 line-clamp-1 italic font-sans w-11/12">
+                      <div className="text-[10px] text-white/50 line-clamp-1 italic font-sans w-11/12">
                         {item.report.reason}
                       </div>
                     </div>
@@ -4986,7 +4985,7 @@ Risk Reminder: ${riskReminder}`;
                 </div>
                 
                 {/* Profile Display Name Update Input element */}
-                <div className="bg-black/25 border border-neutral-900 rounded-xl p-4 space-y-2 text-left font-sans">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2 text-left font-sans">
                   <label className="text-[9.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block">
                     Update Profile Name
                   </label>
@@ -4996,17 +4995,17 @@ Risk Reminder: ${riskReminder}`;
                       value={settingsFullName}
                       onChange={(e) => setSettingsFullName(e.target.value)}
                       placeholder="e.g. Gaks Pro Trader"
-                      className="flex-1 h-9 bg-neutral-950 border border-neutral-900 hover:border-neutral-850 px-3 py-1.5 text-xs text-white rounded-lg focus:border-neutral-800 outline-none transition-colors font-sans"
+                      className="flex-1 h-9 bg-white/5 border border-white/10 hover:border-white/20 px-3 py-1.5 text-xs text-white rounded-lg focus:border-white focus:outline-none focus:ring-1 focus:ring-white/15 outline-none transition-all font-sans"
                     />
                     <button
                       onClick={handleUpdateSettingsName}
-                      className="h-9 px-3 bg-neutral-100 hover:bg-white text-black font-bold text-xs rounded-lg transition-all cursor-pointer border-none flex-shrink-0 flex items-center justify-center"
+                      className="h-9 px-3 bg-white hover:bg-neutral-100 text-black font-bold text-xs rounded-lg transition-all cursor-pointer border-none flex-shrink-0 flex items-center justify-center"
                     >
                       Update
                     </button>
                   </div>
                   {settingsUpdateStatus && (
-                    <span className={`text-[10px] block font-mono ${settingsUpdateStatus.includes("Error") ? "text-rose-400" : "text-emerald-400"}`}>
+                    <span className={`text-[10px] block font-mono ${settingsUpdateStatus.includes("Error") ? "text-rose-455" : "text-white font-bold"}`}>
                       {settingsUpdateStatus}
                     </span>
                   )}
@@ -5052,9 +5051,9 @@ Risk Reminder: ${riskReminder}`;
 
                   {/* Prop Firm Selection and Preset (Only when Prop Firm is active) */}
                   {tempAccountType === "Prop Firm" && (
-                    <div className="space-y-3 p-3 bg-black/40 border border-neutral-900/90 rounded-xl">
+                    <div className="space-y-3 p-3 bg-white/5 border border-white/10 rounded-xl">
                       <div>
-                        <label className="text-[8.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-1.5">
+                        <label className="text-[8.5px] font-semibold text-white/50 font-mono uppercase tracking-wider block mb-1.5">
                           Prop Firm Provider Preset
                         </label>
                         <div className="flex flex-wrap gap-1">
@@ -5065,8 +5064,8 @@ Risk Reminder: ${riskReminder}`;
                               onClick={() => applyPropFirmPreset(firm, tempAccountSize)}
                               className={`px-2 py-1 rounded text-[9px] font-mono font-bold border transition-all cursor-pointer ${
                                 tempPropFirmName === firm
-                                  ? "bg-amber-500/10 border-amber-500/40 text-amber-500 font-semibold"
-                                  : "bg-neutral-950 border-neutral-900 text-neutral-400 hover:text-neutral-250"
+                                  ? "bg-white/15 border-white/20 text-white font-semibold"
+                                  : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white"
                               }`}
                             >
                               {firm === "Funded Next" ? "Funded Next" : firm}
@@ -5076,7 +5075,7 @@ Risk Reminder: ${riskReminder}`;
                       </div>
 
                       <div>
-                        <label className="text-[8.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-1.5">
+                        <label className="text-[8.5px] font-semibold text-white/50 font-mono uppercase tracking-wider block mb-1.5">
                           Standard Account Sizes
                         </label>
                         <div className="grid grid-cols-5 gap-1 font-mono text-[9px]">
@@ -5087,8 +5086,8 @@ Risk Reminder: ${riskReminder}`;
                               onClick={() => applyPropFirmPreset(tempPropFirmName, val)}
                               className={`py-1 rounded border transition-all cursor-pointer text-[9px] font-bold text-center ${
                                 tempAccountSize === val
-                                  ? "bg-neutral-800 border-neutral-600 text-white"
-                                  : "bg-neutral-950 border-neutral-900 text-neutral-500 hover:text-neutral-350"
+                                  ? "bg-white/15 border border-white/20 text-white"
+                                  : "bg-white/5 border border-white/10 text-neutral-500 hover:text-white"
                               }`}
                             >
                               ${val / 1000}k
@@ -5227,10 +5226,10 @@ Risk Reminder: ${riskReminder}`;
 
               {/* Personal Gemini API Settings container */}
               <div className="space-y-3.5">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#10b981] block">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white/50 block">
                   Personal AI Credentials
                 </span>
-                <div className="bg-[#0e1114] border border-neutral-900 rounded-2xl p-4.5 space-y-4 text-left font-sans">
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4.5 space-y-4 text-left font-sans">
                   <div>
                     <p className="text-xs text-neutral-400 leading-normal mb-3">
                       Store your personal Google Gemini API Key here to bypass shared connection limits. All analysis runs directly from your personal secure token.
@@ -5242,12 +5241,12 @@ Risk Reminder: ${riskReminder}`;
                         placeholder="Paste Gemini API Key (e.g. AIzaSy...)"
                         value={userGeminiKey}
                         onChange={(e) => handleUserKeyChange(e.target.value)}
-                        className="w-full h-10 bg-neutral-950 border border-neutral-900 px-3.5 py-2 rounded-lg text-xs text-white placeholder:text-neutral-700 focus:border-neutral-800 outline-none font-mono"
+                        className="w-full h-10 bg-white/5 border border-white/10 px-3.5 py-2 rounded-lg text-xs text-white placeholder:text-neutral-700 focus:border-white focus:outline-none transition-all font-mono"
                       />
                       {userGeminiKey && (
                         <button
                           onClick={() => handleUserKeyChange("")}
-                          className="absolute right-2.5 top-1.5 hover:text-rose-400 text-neutral-500 cursor-pointer text-xs p-1 bg-transparent border-none font-sans font-semibold transition-colors"
+                          className="absolute right-2.5 top-1.5 hover:text-white text-neutral-500 cursor-pointer text-xs p-1 bg-transparent border-none font-sans font-semibold transition-colors"
                           title="Wipe key from credentials store"
                         >
                           Clear
@@ -5261,16 +5260,16 @@ Risk Reminder: ${riskReminder}`;
                     <button
                       onClick={handleTestUserKey}
                       disabled={isTestingKey}
-                      className="flex-1 h-9 bg-transparent border border-neutral-850 hover:bg-neutral-900 text-neutral-300 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer select-none disabled:opacity-50"
+                      className="flex-1 h-9 bg-transparent border border-white/15 hover:bg-white/10 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer select-none disabled:opacity-50"
                     >
                       {isTestingKey ? (
                         <>
-                          <i className="ph ph-circle-notch animate-spin text-neutral-405" />
+                          <i className="ph ph-circle-notch animate-spin text-white/50" />
                           <span>Pinging Google API...</span>
                         </>
                       ) : (
                         <>
-                          <i className="ph ph-activity text-emerald-400" />
+                          <i className="ph ph-activity text-white/80" />
                           <span>Test API Auth Connection</span>
                         </>
                       )}
@@ -5278,15 +5277,11 @@ Risk Reminder: ${riskReminder}`;
                   </div>
 
                   {keyTestResult && (
-                    <div className={`p-3 rounded-lg border text-xs font-mono ${
-                      keyTestResult.success 
-                        ? "bg-emerald-950/25 border-emerald-500/20 text-emerald-400 animate-fadeIn" 
-                        : "bg-rose-950/25 border-rose-500/20 text-rose-400 animate-fadeIn"
-                    }`}>
+                    <div className="p-3 rounded-lg border border-white/10 text-xs font-mono bg-white/5 text-white animate-fadeIn">
                       <span className="block font-black mb-1 text-[10px] uppercase">
                         {keyTestResult.success ? "✓ API Handshake Complete" : "✗ Diagnostics Handshake Refused"}
                       </span>
-                      <span className="text-[10px] font-sans leading-normal block text-neutral-400">
+                      <span className="text-[10px] font-sans leading-normal block text-white/70">
                         {keyTestResult.message}
                       </span>
                     </div>
@@ -5296,7 +5291,7 @@ Risk Reminder: ${riskReminder}`;
 
               {/* Advanced app reset node action triggers */}
               <div className="space-y-3.5">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#f43f5e] block">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white/40 block">
                   Advanced Actions Area
                 </span>
                 <button
@@ -5304,7 +5299,7 @@ Risk Reminder: ${riskReminder}`;
                     setIsSettingsOpen(false);
                     handleResetApplicationState();
                   }}
-                  className="w-full h-10 select-none cursor-pointer border border-[#f43f5e]/30 bg-[#f43f5e]/5 hover:bg-[#f43f5e]/15 text-[#f43f5e] rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all font-sans"
+                  className="w-full h-10 select-none cursor-pointer border border-white/10 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all font-sans"
                 >
                   <i className="ph ph-trash" />
                   <span>Wipe All Alerts & Strategy States</span>
@@ -5313,16 +5308,16 @@ Risk Reminder: ${riskReminder}`;
             </div>
 
             {/* Custom drawer bottom footer control layout */}
-            <div className="p-6 border-t border-neutral-900 bg-neutral-950 flex flex-col gap-2 font-sans">
+            <div className="p-6 border-t border-white/10 bg-[#0F0F0F] flex flex-col gap-2 font-sans">
               <button
                 onClick={handleLogout}
-                className="w-full h-11 bg-rose-950/30 hover:bg-rose-950/80 text-rose-400 hover:text-white border border-rose-900/35 rounded-xl text-xs font-bold flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+                className="w-full h-11 bg-transparent border border-white/15 hover:border-white hover:bg-white/5 text-white/80 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2.5 transition-all cursor-pointer"
               >
                 <i className="ph ph-sign-out text-sm" />
                 <span>Sign out from Session</span>
               </button>
-              <p className="text-[9px] text-neutral-600 font-mono text-center m-0 mt-1">
-                Gaks Client v2.5.0 • Sandbox Node Port: 3000
+              <p className="text-[9px] text-white/30 font-mono text-center m-0 mt-1">
+                Institutional Trading Workstation
               </p>
             </div>
           </div>
