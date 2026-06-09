@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -400,35 +401,70 @@ async function startServer() {
     };
   });
 
-  let currentKeyPoolIndex = 0;
+  interface AdminKey {
+    id: string;
+    key: string;
+    status: "Active" | "Quota Exceeded" | "Invalid" | "Rate Limited" | "Unknown Error";
+    error_message: string;
+    averageLatency: number;
+    successCount: number;
+    failureCount: number;
+    lastUsed: string;
+  }
 
-  function getKeysPool(): string[] {
+  const KEYS_FILE = path.join(process.cwd(), "admin_keys.json");
+
+  function readAdminKeys(): AdminKey[] {
+    try {
+      if (fs.existsSync(KEYS_FILE)) {
+        const data = fs.readFileSync(KEYS_FILE, "utf-8");
+        return JSON.parse(data);
+      }
+    } catch (err) {
+      console.error("Error reading admin keys:", err);
+    }
+
+    // fallback migration of existing ecosystem keys
     const rawKeys = [
       process.env.GEMINI_API_KEY,
       process.env.GEMINI_API_KEY_2,
       process.env.GEMINI_API_KEY_3,
       process.env.GEMINI_API_KEY_4,
       process.env.GEMINI_API_KEY_5
-    ];
-    
-    // Clean and filter valid keys
-    const valid = rawKeys.map(k => k?.trim()).filter(k => k && k !== "MY_GEMINI_API_KEY") as string[];
-    
-    // Seed pool up to 5 keys so rotation can always be active/demonstrated in the UI
-    if (valid.length === 0) {
-      // If absolutely no key is set (not even the primary), we seed with mock holders
-      for (let i = 0; i < 5; i++) {
-        valid.push(`GEMINI_API_KEY_DEMO_HOLDER_${i + 1}`);
-      }
-    } else {
-      // Seed up to 5 keys using the primary key or mock tags
-      const baseKey = valid[0];
-      while (valid.length < 5) {
-        valid.push(`GEMINI_API_KEY_DEMO_HOLDER_${valid.length + 1}`);
+    ].map(k => k?.trim()).filter(k => k && k !== "MY_GEMINI_API_KEY" && !k.includes("DEMO_HOLDER")) as string[];
+
+    if (rawKeys.length === 0) {
+      for (let i = 1; i <= 5; i++) {
+        rawKeys.push(`GEMINI_API_KEY_DEMO_HOLDER_${i}`);
       }
     }
-    return valid;
+
+    const initialKeys: AdminKey[] = rawKeys.map((k, i) => ({
+      id: `admin-key-init-${i}`,
+      key: k,
+      status: "Active",
+      error_message: "",
+      averageLatency: 130 + i * 20,
+      successCount: 12 + i * 4,
+      failureCount: 0,
+      lastUsed: new Date(Date.now() - (i * 45 * 60 * 1000)).toISOString()
+    }));
+
+    try {
+      fs.writeFileSync(KEYS_FILE, JSON.stringify(initialKeys, null, 2), "utf-8");
+    } catch (_) {}
+    return initialKeys;
   }
+
+  function saveAdminKeys(keys: AdminKey[]) {
+    try {
+      fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), "utf-8");
+    } catch (err) {
+      console.error("Error writing admin keys:", err);
+    }
+  }
+
+  let currentKeyPoolIndex = 0;
 
   // Orchestrator executing a Gemini call against active key index or custom user key
   async function executeWithRotation<T>(
@@ -450,28 +486,34 @@ async function startServer() {
       return { result, keySource: "user_personal_override", keyIndex: -1 };
     }
 
-    // 2. Fall back to shared keys pool
-    const pool = getKeysPool();
-    
-    // If the index exceeds available keys, prevent execution & prompt for user key
-    if (currentKeyPoolIndex >= pool.length) {
+    // 2. Fall back to shared admin keys pool
+    const adminKeys = readAdminKeys();
+    if (adminKeys.length === 0) {
       throw new Error("SHARED_KEYS_EXHAUSTED");
     }
 
-    let localIndex = currentKeyPoolIndex;
-    let attemptsLeft = pool.length - localIndex;
+    let localIndex = 0; // Always start with the first available key
+    let attemptsLeft = adminKeys.length;
     let fallbackCount = 0;
-    
+
     while (attemptsLeft > 0) {
-      const activeKey = pool[localIndex];
-      const isMock = activeKey.includes("DEMO_HOLDER");
-      
-      console.log(`[Gemini Rotator] Executing trade scanner using Key index ${localIndex}/${pool.length} (${isMock ? 'Mock Key' : 'Real Secret Key'})`);
-      
+      const kEntry = adminKeys[localIndex];
+      // Skip keys that are known to be completely Invalid or Quota Exceeded to avoid slow fail chains,
+      // but if ALL are exhausted we'll handle outside the loop.
+      if (kEntry.status === "Invalid" || kEntry.status === "Quota Exceeded") {
+        localIndex++;
+        attemptsLeft--;
+        continue;
+      }
+
+      const activeKey = kEntry.key;
+      const isMock = activeKey.includes("DEMO_HOLDER") || activeKey.includes("DemoKey");
+
+      console.log(`[Gemini Rotator] Try Key index ${localIndex}/${adminKeys.length} (${isMock ? 'Mock Key' : 'Real Key'}) - Status: ${kEntry.status}`);
+
       const requestStartTime = Date.now();
       try {
         if (isMock) {
-          // Mock keys throw credentials error to simulate rotation elegantly!
           throw new Error("API_KEY_EXPIRED: Simulated shared key quota exceeded (developer limit 429).");
         }
 
@@ -483,129 +525,294 @@ async function startServer() {
             }
           }
         });
-        
+
         const result = await apiExecutor(ai);
-        
-        // Successful response received! Sync current key pointer with the working node index
+
+        // SUCCESS! Update health metrics & status
+        const duration = Date.now() - requestStartTime;
+        kEntry.status = "Active";
+        kEntry.error_message = "";
+        kEntry.successCount++;
+        kEntry.averageLatency = Math.round((kEntry.averageLatency * 4 + duration) / 5);
+        kEntry.lastUsed = new Date().toISOString();
+
+        saveAdminKeys(adminKeys);
+
         currentKeyPoolIndex = localIndex;
 
-        const duration = Date.now() - requestStartTime;
-        if (nodeStats[localIndex]) {
-          nodeStats[localIndex].successCount++;
-          nodeStats[localIndex].averageLatency = Math.round((nodeStats[localIndex].averageLatency * 4 + duration) / 5);
-          nodeStats[localIndex].lastUsed = new Date().toISOString();
-        }
-
-        return { 
-          result, 
-          keySource: `Shared Key #${localIndex + 1}`, 
-          keyIndex: localIndex 
+        return {
+          result,
+          keySource: `Shared Key #${localIndex + 1}`,
+          keyIndex: localIndex
         };
       } catch (error: any) {
         const duration = Date.now() - requestStartTime;
-        if (nodeStats[localIndex]) {
-          nodeStats[localIndex].failureCount++;
-          nodeStats[localIndex].averageLatency = Math.round((nodeStats[localIndex].averageLatency * 4 + duration) / 5);
-          nodeStats[localIndex].lastUsed = new Date().toISOString();
-        }
+        kEntry.failureCount++;
+        kEntry.averageLatency = Math.round((kEntry.averageLatency * 4 + duration) / 5);
+        kEntry.lastUsed = new Date().toISOString();
 
         const errorString = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        console.log(`[Key Pool] Slot index ${localIndex} updated. Shifting checking pathway.`);
-        
-        // 1. Analyze if the error is a transient downstream service overload (503 UNAVAILABLE or network timeout)
-        const errStr = errorString.toLowerCase();
-        const isTransient = errStr.includes("503") || 
-                            errStr.includes("unavailable") || 
-                            errStr.includes("high demand") || 
-                            errStr.includes("temporary") || 
-                            errStr.includes("try again later") || 
-                            errStr.includes("timeout") || 
-                            errStr.includes("etimedout") || 
-                            error?.status === "UNAVAILABLE" || 
-                            error?.status === 503;
+        kEntry.error_message = errorString;
 
-        if (isTransient) {
-          console.log("[Key Pool] Current slot is temporarily busy. Keeping pointer stable.");
-          // Temporarily try the next key in the chain to maintain instant response without marking this key exhausted globally
-          localIndex++;
-          attemptsLeft--;
-          fallbackCount++;
-          continue;
+        // Categorize health statuses
+        const errStr = errorString.toLowerCase();
+        if (errStr.includes("invalid") || errStr.includes("api_key_invalid") || errStr.includes("key not valid") || errorString.includes("400")) {
+          kEntry.status = "Invalid";
+        } else if (errStr.includes("quota") || errStr.includes("resource_exhausted") || errStr.includes("exhausted")) {
+          kEntry.status = "Quota Exceeded";
+        } else if (errStr.includes("429") || errStr.includes("rate") || errStr.includes("request limit")) {
+          kEntry.status = "Rate Limited";
+        } else {
+          kEntry.status = "Unknown Error";
         }
 
-        // 2. Auto-increment index to move to the next backup key permanently only for actual exhaustion/auth depletion limits!
-        currentKeyPoolIndex = Math.max(currentKeyPoolIndex, localIndex + 1);
+        console.log(`[Key Pool] Key ${localIndex} failed with status: ${kEntry.status}. Shifting to next candidate.`);
+        saveAdminKeys(adminKeys);
+
         localIndex++;
         attemptsLeft--;
         fallbackCount++;
-        
-        if (currentKeyPoolIndex >= pool.length) {
-          throw new Error("SHARED_KEYS_EXHAUSTED");
-        }
+      }
+    }
+
+    // Try a broad fallback: if all keys are marked bad, but we have some keys, try the first one anyway as last resort
+    const pool = adminKeys.map(k => k.key);
+    if (pool.length > 0) {
+      const activeKey = pool[0];
+      const isMock = activeKey.includes("DEMO_HOLDER") || activeKey.includes("DemoKey");
+      if (!isMock) {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: activeKey,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+          });
+          const result = await apiExecutor(ai);
+          return { result, keySource: "Backup Recovery", keyIndex: 0 };
+        } catch (_) {}
       }
     }
 
     throw new Error("SHARED_KEYS_EXHAUSTED");
   }
 
+  // Helper middleware/check inline for Admin Authorization
+  function verifyIsAdmin(req: express.Request): boolean {
+    const adminEmail = req.headers["x-admin-email"] || req.body?.adminEmail || req.query?.adminEmail;
+    return adminEmail === "gaddt8310@gmail.com";
+  }
+
   // REST endpoints for the Rotation status panels on Gaks Dashboard
   app.get("/api/key-pool/status", (req, res) => {
-    const pool = getKeysPool();
+    const adminKeys = readAdminKeys();
     
-    // Slight latency fluctuation to simulate high fidelity telemetry stream
-    nodeStats.forEach((stat, i) => {
-      const percentDrift = (Math.random() * 10 - 5) / 100; // -5% to +5%
-      stat.averageLatency = Math.max(90, Math.round(stat.averageLatency * (1 + percentDrift)));
-      
-      // Sync failureCount for exhausted state
-      if (i < currentKeyPoolIndex) {
-        if (stat.failureCount === 0) {
-          stat.failureCount = Math.floor(Math.random() * 2) + 1;
-        }
+    // Simulate slight fluctuation in latency for active keys
+    adminKeys.forEach((k) => {
+      if (k.status === "Active") {
+        const percentDrift = (Math.random() * 8 - 4) / 100;
+        k.averageLatency = Math.max(90, Math.round(k.averageLatency * (1 + percentDrift)));
       }
     });
 
     return res.json({
       activeKeyIndex: currentKeyPoolIndex,
-      totalKeys: pool.length,
-      isExhausted: currentKeyPoolIndex >= pool.length,
-      keys: pool.map((key, i) => {
-        const isMock = key.includes("DEMO_HOLDER");
-        const mask = isMock ? "DEMO NODE CONFIGURED" : "SECURED ON BACKEND";
+      totalKeys: adminKeys.length,
+      isExhausted: adminKeys.every(k => k.status === "Quota Exceeded" || k.status === "Invalid"),
+      keys: adminKeys.map((k, i) => {
+        const isMock = k.key.includes("DEMO_HOLDER") || k.key.includes("FakeDemoKey");
+        const mask = k.key.length > 12 ? (k.key.substring(0, 8) + "..." + k.key.substring(k.key.length - 4)) : "DEMO KEY";
+        
+        let legacyStatus = "pending";
+        if (k.status !== "Active") {
+          legacyStatus = "exhausted";
+        } else if (i === currentKeyPoolIndex) {
+          legacyStatus = "active";
+        }
+
         return {
           index: i,
+          id: k.id,
           name: `Shared Key Token #${i + 1}`,
           description: isMock ? "Simulated Backup Key Token" : "Primary Secret Key",
           masked: mask,
           isMock,
-          status: i < currentKeyPoolIndex ? "exhausted" : (i === currentKeyPoolIndex ? "active" : "pending"),
-          stats: nodeStats[i]
+          status: legacyStatus,
+          healthStatus: k.status,
+          error_message: k.error_message,
+          stats: {
+            index: i,
+            averageLatency: k.averageLatency,
+            successCount: k.successCount,
+            failureCount: k.failureCount,
+            lastUsed: k.lastUsed
+          }
         };
       })
     });
   });
 
   app.post("/api/key-pool/deplete", (req, res) => {
-    const pool = getKeysPool();
-    if (currentKeyPoolIndex < pool.length) {
-      if (nodeStats[currentKeyPoolIndex]) {
-        nodeStats[currentKeyPoolIndex].failureCount++;
-        nodeStats[currentKeyPoolIndex].lastUsed = new Date().toISOString();
-      }
-      currentKeyPoolIndex++;
+    const adminKeys = readAdminKeys();
+    if (adminKeys.length > 0) {
+      const kIndex = Math.min(currentKeyPoolIndex, adminKeys.length - 1);
+      const kEntry = adminKeys[kIndex];
+      kEntry.status = "Quota Exceeded";
+      kEntry.error_message = "Skipped by manual standby trigger.";
+      saveAdminKeys(adminKeys);
+      currentKeyPoolIndex = (currentKeyPoolIndex + 1) % adminKeys.length;
     }
-    return res.json({ success: true, activeKeyIndex: currentKeyPoolIndex, isExhausted: currentKeyPoolIndex >= pool.length });
+    return res.json({ success: true, activeKeyIndex: currentKeyPoolIndex });
   });
 
   app.post("/api/key-pool/reset", (req, res) => {
     currentKeyPoolIndex = 0;
-    // Partially refresh stats back to healthy state for excellent demo resets
-    nodeStats.forEach((stat, i) => {
+    const adminKeys = readAdminKeys();
+    adminKeys.forEach((stat) => {
+      stat.status = "Active";
+      stat.error_message = "";
       stat.failureCount = 0;
-      stat.successCount = 10 + Math.floor(Math.random() * 10);
-      stat.averageLatency = 130 + (i * 20) + Math.floor(Math.random() * 15);
     });
-    return res.json({ success: true, activeKeyIndex: currentKeyPoolIndex, isExhausted: false });
+    saveAdminKeys(adminKeys);
+    return res.json({ success: true, activeKeyIndex: 0, isExhausted: false });
+  });
+
+  // --- ADMIN API KEY MANAGEMENT ENDPOINTS ---
+
+  // GET all keys for the admin view
+  app.get("/api/admin/keys", (req, res) => {
+    if (!verifyIsAdmin(req)) {
+      return res.status(403).json({ error: "Access denied. Admin authorization required." });
+    }
+    const adminKeys = readAdminKeys();
+    return res.json({ keys: adminKeys });
+  });
+
+  // ADD an admin key
+  app.post("/api/admin/keys/add", (req, res) => {
+    if (!verifyIsAdmin(req)) {
+      return res.status(403).json({ error: "Access denied. Admin authorization required." });
+    }
+    const { key } = req.body;
+    if (!key || typeof key !== "string" || key.trim() === "") {
+      return res.status(400).json({ error: "Missing key value." });
+    }
+
+    const adminKeys = readAdminKeys();
+    const newKey: AdminKey = {
+      id: `admin-key-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      key: key.trim(),
+      status: "Active",
+      error_message: "",
+      averageLatency: 120,
+      successCount: 0,
+      failureCount: 0,
+      lastUsed: "Never"
+    };
+
+    adminKeys.push(newKey);
+    saveAdminKeys(adminKeys);
+    return res.json({ success: true, keys: adminKeys });
+  });
+
+  // EDIT an admin key
+  app.post("/api/admin/keys/edit", (req, res) => {
+    if (!verifyIsAdmin(req)) {
+      return res.status(403).json({ error: "Access denied. Admin authorization required." });
+    }
+    const { id, key } = req.body;
+    if (!id || !key || typeof key !== "string" || key.trim() === "") {
+      return res.status(400).json({ error: "Missing parameter id or key." });
+    }
+
+    const adminKeys = readAdminKeys();
+    const kIdx = adminKeys.findIndex(k => k.id === id);
+    if (kIdx === -1) {
+      return res.status(404).json({ error: "Key not found." });
+    }
+
+    adminKeys[kIdx].key = key.trim();
+    adminKeys[kIdx].status = "Active"; // Reset health status because key value changed
+    adminKeys[kIdx].error_message = "";
+    adminKeys[kIdx].successCount = 0;
+    adminKeys[kIdx].failureCount = 0;
+    adminKeys[kIdx].lastUsed = new Date().toISOString();
+
+    saveAdminKeys(adminKeys);
+    return res.json({ success: true, keys: adminKeys });
+  });
+
+  // DELETE an admin key
+  app.post("/api/admin/keys/delete", (req, res) => {
+    if (!verifyIsAdmin(req)) {
+      return res.status(403).json({ error: "Access denied. Admin authorization required." });
+    }
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "Missing parameter id." });
+    }
+
+    const adminKeys = readAdminKeys();
+    const filtered = adminKeys.filter(k => k.id !== id);
+    saveAdminKeys(filtered);
+    
+    // Ensure index doesn't go outer bounds
+    if (currentKeyPoolIndex >= filtered.length) {
+      currentKeyPoolIndex = 0;
+    }
+
+    return res.json({ success: true, keys: filtered });
+  });
+
+  // REORDER admin keys
+  app.post("/api/admin/keys/reorder", (req, res) => {
+    if (!verifyIsAdmin(req)) {
+      return res.status(403).json({ error: "Access denied. Admin authorization required." });
+    }
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: "Missing list of IDs to reorder." });
+    }
+
+    const adminKeys = readAdminKeys();
+    const reordered: AdminKey[] = [];
+    ids.forEach((id) => {
+      const match = adminKeys.find(k => k.id === id);
+      if (match) {
+        reordered.push(match);
+      }
+    });
+
+    // Add any missing keys at the end just in case
+    adminKeys.forEach((k) => {
+      if (!reordered.find(r => r.id === k.id)) {
+        reordered.push(k);
+      }
+    });
+
+    saveAdminKeys(reordered);
+    return res.json({ success: true, keys: reordered });
+  });
+
+  // RESET health status of an admin key
+  app.post("/api/admin/keys/reset-health", (req, res) => {
+    if (!verifyIsAdmin(req)) {
+      return res.status(403).json({ error: "Access denied. Admin authorization required." });
+    }
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "Missing parameter id." });
+    }
+
+    const adminKeys = readAdminKeys();
+    const kEntry = adminKeys.find(k => k.id === id);
+    if (kEntry) {
+      kEntry.status = "Active";
+      kEntry.error_message = "";
+      kEntry.failureCount = 0;
+      kEntry.successCount = 0;
+      saveAdminKeys(adminKeys);
+    }
+
+    return res.json({ success: true, keys: adminKeys });
   });
 
   // Verify custom user API key in real-time

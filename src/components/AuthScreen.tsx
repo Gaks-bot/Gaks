@@ -288,21 +288,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               )}
             </button>
 
-            <div className="relative flex py-3 items-center">
-              <div className="flex-grow border-t border-white/10"></div>
-              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-white/50">OR</span>
-              <div className="flex-grow border-t border-white/10"></div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onSandboxBypass}
-              className="w-full h-11 bg-transparent hover:bg-white/5 border border-white/15 text-white text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <i className="ph ph-shield-check text-sm" />
-              <span>Enter Sandbox Mode (Skip Auth)</span>
-            </button>
-
             {authError && (
               <div id="login-form-error" className="mt-3 text-[11px] text-white/80 font-medium text-center bg-white/5 border border-white/10 py-2 px-3 rounded-lg animate-fadeIn flex items-center justify-center gap-1.5">
                 <i className="ph ph-warning-circle text-[13px] text-white/50 flex-shrink-0" />
@@ -426,21 +411,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   <span>Create Account</span>
                 </>
               )}
-            </button>
-
-            <div className="relative flex py-3 items-center">
-              <div className="flex-grow border-t border-white/10"></div>
-              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-white/50">OR</span>
-              <div className="flex-grow border-t border-white/10"></div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onSandboxBypass}
-              className="w-full h-11 bg-transparent hover:bg-white/5 border border-white/15 text-white text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <i className="ph ph-shield-check text-sm" />
-              <span>Enter Sandbox Mode (Skip Auth)</span>
             </button>
 
             {authError && (

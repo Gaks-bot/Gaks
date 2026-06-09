@@ -327,6 +327,7 @@ export default function App() {
 
   // Supabase Auth and Email configuration state setup
   const [session, setSession] = useState<any>(null);
+  const isAdmin = session?.user?.email === "gaddt8310@gmail.com" || session?.user?.email === "gaddt8315@gmail.com";
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [authView, setAuthView] = useState<"login" | "signup" | "forgot_password" | "reset_password">("login");
   const [authEmail, setAuthEmail] = useState<string>("");
@@ -937,11 +938,196 @@ export default function App() {
     }
   };
 
-  const handleUserKeyChange = (key: string) => {
+  const [adminKeys, setAdminKeys] = useState<any[]>([]);
+  const [adminKeysLoading, setAdminKeysLoading] = useState<boolean>(false);
+  const [adminKeysError, setAdminKeysError] = useState<string | null>(null);
+
+  const fetchAdminKeys = async () => {
+    if (!session?.user?.email || (session.user.email !== "gaddt8310@gmail.com" && session.user.email !== "gaddt8315@gmail.com")) return;
+    setAdminKeysLoading(true);
+    setAdminKeysError(null);
+    try {
+      const res = await fetch(`/api/admin/keys?adminEmail=${encodeURIComponent(session.user.email)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAdminKeys(data.keys || []);
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        setAdminKeysError(errJson.error || "Failed to load admin keys.");
+      }
+    } catch (err: any) {
+      setAdminKeysError(err.message || "Network error loading admin keys.");
+    } finally {
+      setAdminKeysLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (session?.user?.email === "gaddt8310@gmail.com" || session?.user?.email === "gaddt8315@gmail.com") {
+      fetchAdminKeys();
+    }
+  }, [session]);
+
+  const [newAdminKeyInput, setNewAdminKeyInput] = useState<string>("");
+  const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
+  const [editingKeyValue, setEditingKeyValue] = useState<string>("");
+  const [isSubmittingAdminKey, setIsSubmittingAdminKey] = useState<boolean>(false);
+
+  const handleAddAdminKey = async () => {
+    if (!newAdminKeyInput.trim() || !session?.user?.email) return;
+    setIsSubmittingAdminKey(true);
+    try {
+      const res = await fetch("/api/admin/keys/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminEmail: session.user.email,
+          key: newAdminKeyInput.trim()
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminKeys(data.keys || []);
+        setNewAdminKeyInput("");
+        fetchKeyPoolStatus();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Failed to add admin key.");
+      }
+    } catch (err: any) {
+      alert("Error adding key: " + err.message);
+    } finally {
+      setIsSubmittingAdminKey(false);
+    }
+  };
+
+  const handleEditAdminKey = async (id: string) => {
+    if (!editingKeyValue.trim() || !session?.user?.email) return;
+    setIsSubmittingAdminKey(true);
+    try {
+      const res = await fetch("/api/admin/keys/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminEmail: session.user.email,
+          id,
+          key: editingKeyValue.trim()
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminKeys(data.keys || []);
+        setEditingKeyId(null);
+        setEditingKeyValue("");
+        fetchKeyPoolStatus();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Failed to edit admin key.");
+      }
+    } catch (err: any) {
+      alert("Error editing key: " + err.message);
+    } finally {
+      setIsSubmittingAdminKey(false);
+    }
+  };
+
+  const handleDeleteAdminKey = async (id: string) => {
+    if (!session?.user?.email) return;
+    if (!confirm("Are you sure you want to delete this admin key?")) return;
+    try {
+      const res = await fetch("/api/admin/keys/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminEmail: session.user.email,
+          id
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminKeys(data.keys || []);
+        fetchKeyPoolStatus();
+      } else {
+         const err = await res.json().catch(() => ({}));
+         alert(err.error || "Failed to delete key.");
+      }
+    } catch (err: any) {
+      alert("Error deleting key: " + err.message);
+    }
+  };
+
+  const handleResetHealthAdminKey = async (id: string) => {
+    if (!session?.user?.email) return;
+    try {
+      const res = await fetch("/api/admin/keys/reset-health", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminEmail: session.user.email,
+          id
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminKeys(data.keys || []);
+        fetchKeyPoolStatus();
+      }
+    } catch (err: any) {
+      console.warn("Could not reset key health:", err);
+    }
+  };
+
+  const handleReorderAdminKey = async (id: string, direction: "up" | "down") => {
+    if (!session?.user?.email) return;
+    const idx = adminKeys.findIndex(k => k.id === id);
+    if (idx === -1) return;
+    
+    const newKeys = [...adminKeys];
+    if (direction === "up" && idx > 0) {
+      const temp = newKeys[idx];
+      newKeys[idx] = newKeys[idx - 1];
+      newKeys[idx - 1] = temp;
+    } else if (direction === "down" && idx < newKeys.length - 1) {
+      const temp = newKeys[idx];
+      newKeys[idx] = newKeys[idx + 1];
+      newKeys[idx + 1] = temp;
+    } else {
+      return;
+    }
+
+    setAdminKeys(newKeys);
+
+    try {
+      const res = await fetch("/api/admin/keys/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminEmail: session.user.email,
+          ids: newKeys.map(k => k.id)
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminKeys(data.keys || []);
+        fetchKeyPoolStatus();
+      }
+    } catch (err: any) {
+      console.warn("Could not reorder keys on backend:", err);
+    }
+  };
+
+  const handleUserKeyChange = async (key: string) => {
     setUserGeminiKey(key);
     localStorage.setItem("gaks_user_gemini_key", key);
     if (session?.user?.email) {
       localStorage.setItem("gaks_user_gemini_key_email", session.user.email);
+      try {
+        await supabase.auth.updateUser({
+          data: { gemini_api_key: key }
+        });
+      } catch (err) {
+        console.warn("Could not save key to Supabase user metadata:", err);
+      }
     } else {
       localStorage.removeItem("gaks_user_gemini_key_email");
     }
@@ -956,12 +1142,24 @@ export default function App() {
     if (session?.user?.email) {
       const currentEmail = session.user.email;
       const storedEmail = localStorage.getItem("gaks_user_gemini_key_email");
-      if (storedEmail && storedEmail !== currentEmail) {
+      
+      const profileKey = session.user.user_metadata?.gemini_api_key || "";
+      if (profileKey) {
+        setUserGeminiKey(profileKey);
+        localStorage.setItem("gaks_user_gemini_key", profileKey);
+        localStorage.setItem("gaks_user_gemini_key_email", currentEmail);
+      } else if (storedEmail && storedEmail !== currentEmail) {
         localStorage.removeItem("gaks_user_gemini_key");
         localStorage.removeItem("gaks_user_gemini_key_email");
         setUserGeminiKey("");
       } else if (!storedEmail && localStorage.getItem("gaks_user_gemini_key")) {
         localStorage.setItem("gaks_user_gemini_key_email", currentEmail);
+        const localKey = localStorage.getItem("gaks_user_gemini_key") || "";
+        if (localKey) {
+          supabase.auth.updateUser({
+            data: { gemini_api_key: localKey }
+          }).catch(err => console.warn("Could not sync local key to profile:", err));
+        }
       }
     }
   }, [session]);
@@ -4514,6 +4712,220 @@ Risk Reminder: ${riskReminder}`;
               </div>
             </div>
 
+            {/* PANEL: DEDICATED ADMIN API KEY MANAGER */}
+            {isAdmin && (
+              <div className="card p-5 border border-amber-500/20 bg-[#0c0c09] rounded-xl relative overflow-hidden font-sans shadow-[0_0_15px_rgba(242,158,11,0.02)]">
+                <div className="flex justify-between items-center mb-1">
+                  <h3 className="text-xs font-bold text-amber-500 tracking-wide uppercase flex items-center gap-2 leading-none">
+                    <i className="ph ph-shield-check text-sm text-amber-500" />
+                    API Key Manager (Admin Mode Active)
+                  </h3>
+                  <span className="text-[10px] font-mono bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2.2 py-0.5 rounded-full font-medium">
+                    {adminKeys.length} keys active
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-400/70 mt-0 mb-4 leading-relaxed">
+                  Modify, monitor, reorder, and control the active backup keys pool. Order determines rotation sequence.
+                </p>
+
+                {/* KPI Total Keys Indicator Column */}
+                <div className="bg-amber-500/[0.02] border border-amber-500/10 rounded-lg p-3 mb-4 font-mono text-[11px] flex justify-between items-center text-amber-500/80">
+                  <div className="flex items-center gap-2">
+                    <i className="ph ph-hash text-amber-500/60" />
+                    <span>Total Database Registered Keys:</span>
+                  </div>
+                  <span className="text-xs font-bold text-white bg-amber-500/20 px-2 py-0.5 rounded font-mono">{adminKeys.length}</span>
+                </div>
+
+                {/* Add Key Sub-form */}
+                <div className="mb-5 p-3.5 border border-white/5 bg-white/[0.01] rounded-xl">
+                  <h4 className="text-[11px] font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5 font-sans">
+                    <i className="ph ph-plus-circle text-xs text-neutral-400" />
+                    Register New Gemini Node Token
+                  </h4>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Paste AIzaSy... API key"
+                      value={newAdminKeyInput}
+                      onChange={(e) => setNewAdminKeyInput(e.target.value)}
+                      className="flex-1 bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-3 py-2 rounded-lg font-mono outline-none focus:border-neutral-700 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddAdminKey}
+                      disabled={isSubmittingAdminKey || !newAdminKeyInput.trim()}
+                      className="bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:hover:bg-amber-500 text-black font-semibold text-xs px-3.5 py-2 rounded-lg transition-colors font-sans cursor-pointer"
+                    >
+                      {isSubmittingAdminKey ? (
+                        <i className="ph ph-circle-notch animate-spin text-black" />
+                      ) : (
+                        "Add Key"
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Admin Keys Dynamic List */}
+                <div className="space-y-2.5 font-mono text-[11px] text-white/70 max-h-[350px] overflow-y-auto pr-1">
+                  {adminKeys.length === 0 ? (
+                    <div className="text-center py-6 text-white/30 text-xs border border-white/10 rounded-xl bg-white/[0.01]">
+                      No custom keys configured yet. Backup system is using mock templates.
+                    </div>
+                  ) : (
+                    adminKeys.map((k, index) => {
+                      const isEditing = editingKeyId === k.id;
+                      const hasLastUsed = k.lastUsed && k.lastUsed !== "Never";
+                      
+                      // Status colors mapping
+                      let badgeColor = "bg-neutral-500/10 text-neutral-400 border border-neutral-500/20";
+                      switch (k.status) {
+                        case "Active":
+                          badgeColor = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                          break;
+                        case "Quota Exceeded":
+                          badgeColor = "bg-rose-500/10 text-rose-400 border border-rose-500/20";
+                          break;
+                        case "Invalid":
+                          badgeColor = "bg-amber-500/10 text-amber-400 border border-amber-500/20";
+                          break;
+                        case "Rate Limited":
+                          badgeColor = "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20";
+                          break;
+                        case "Unknown Error":
+                          badgeColor = "bg-red-500/10 text-red-500 border border-red-500/20";
+                          break;
+                      }
+
+                      return (
+                        <div key={k.id} className="border border-white/5 bg-white/[0.02] p-3 rounded-xl transition-all relative">
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <span className="text-[10px] text-amber-500 font-bold block">Edit Key Value:</span>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={editingKeyValue}
+                                  onChange={(e) => setEditingKeyValue(e.target.value)}
+                                  className="flex-1 bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-2.5 py-1.5 rounded-lg font-mono outline-none focus:border-neutral-600"
+                                />
+                                <button
+                                  onClick={() => handleEditAdminKey(k.id)}
+                                  className="bg-emerald-500 text-black px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingKeyId(null);
+                                    setEditingKeyValue("");
+                                  }}
+                                  className="bg-neutral-850 text-white px-2.5 py-1.5 rounded-lg text-[10px] cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {/* Header info bar */}
+                              <div className="flex justify-between items-start gap-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-white/40 font-mono font-medium">#{index + 1}</span>
+                                  <span className="text-white font-semibold font-sans">{k.key.length > 12 ? `${k.key.substring(0, 8)}...${k.key.substring(k.key.length - 4)}` : "DEMO KEY"}</span>
+                                  <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase leading-none ${badgeColor}`}>
+                                    {k.status}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {/* Reordering Controls */}
+                                  <button
+                                    onClick={() => handleReorderAdminKey(k.id, "up")}
+                                    disabled={index === 0}
+                                    title="Move Key Up"
+                                    className="p-1 text-white/40 hover:text-white disabled:opacity-20 transition-all cursor-pointer"
+                                  >
+                                    <i className="ph ph-caret-up text-xs" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleReorderAdminKey(k.id, "down")}
+                                    disabled={index === adminKeys.length - 1}
+                                    title="Move Key Down"
+                                    className="p-1 text-white/40 hover:text-white disabled:opacity-20 transition-all cursor-pointer"
+                                  >
+                                    <i className="ph ph-caret-down text-xs" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Error message logging panel */}
+                              {k.error_message && (
+                                <div className="text-[9px] bg-red-500/5 text-red-300 border border-red-500/10 p-2 rounded-lg max-h-[50px] overflow-y-auto leading-relaxed mt-1 scrollbar-thin">
+                                  <span className="font-semibold block text-red-400">Response Error:</span>
+                                  {k.error_message}
+                                </div>
+                              )}
+
+                              {/* Health Stats & Metrics Row */}
+                              <div className="grid grid-cols-4 gap-1 pt-1.5 text-[8.5px] border-t border-white/5 text-white/45">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-white/30 uppercase">Latency</span>
+                                  <span className="font-bold text-white/80">{k.averageLatency || "---"} ms</span>
+                                </div>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-[#10b981]/50 uppercase">Success</span>
+                                  <span className="font-bold text-[#10b981]">{k.successCount}</span>
+                                </div>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-[#ef4444]/50 uppercase">Failed</span>
+                                  <span className="font-bold text-[#ef4444]">{k.failureCount}</span>
+                                </div>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-white/30 uppercase font-sans">Last check</span>
+                                  <span className="font-bold text-white/80 truncate">
+                                    {hasLastUsed ? new Date(k.lastUsed).toLocaleTimeString() : "Never"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Buttons panel */}
+                              <div className="flex justify-end gap-1.5 pt-2 border-t border-white/[0.03]">
+                                <button
+                                  onClick={() => handleResetHealthAdminKey(k.id)}
+                                  className="text-[9px] bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 px-2 py-1 rounded transition-colors font-sans select-none flex items-center gap-1 cursor-pointer"
+                                  title="Reset connection status helper to Active"
+                                >
+                                  <i className="ph ph-arrow-counter-clockwise" />
+                                  <span>Reset Health</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingKeyId(k.id);
+                                    setEditingKeyValue(k.key);
+                                  }}
+                                  className="text-[9px] bg-neutral-800 hover:bg-neutral-750 text-neutral-300 px-2.5 py-1 rounded transition-colors font-sans select-none flex items-center gap-1 cursor-pointer"
+                                >
+                                  <i className="ph ph-pencil-simple" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAdminKey(k.id)}
+                                  className="text-[9px] bg-red-500/10 hover:bg-red-500/20 text-red-400 px-2.5 py-1 rounded transition-colors font-sans select-none flex items-center gap-1 cursor-pointer"
+                                >
+                                  <i className="ph ph-trash" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Panel 2: Live Cluster Status Board */}
             <div className="card p-5 border border-white/10 bg-[#0F0F0F] rounded-xl relative overflow-hidden font-sans">
               <h3 className="text-xs font-bold text-white tracking-wide uppercase flex items-center gap-2 mb-3 leading-none">
@@ -4521,7 +4933,7 @@ Risk Reminder: ${riskReminder}`;
                 Backup Network Status
               </h3>
               <p className="text-[11px] text-white/70 mt-0 mb-4 leading-relaxed">
-                Our backup system maintains 5 reserve servers. If standard rate limits are met, analyses auto-route with zero interruptions.
+                Our backup system maintains active reserve servers. If standard rate limits are met, analyses auto-route with zero interruptions.
               </p>
 
               {keyPoolStatus && (
@@ -4532,6 +4944,9 @@ Risk Reminder: ${riskReminder}`;
                         <span className={`w-2 h-2 rounded-full ${k.status === 'exhausted' ? 'bg-white/30' : k.status === 'active' ? 'bg-white animate-pulse' : 'bg-white/60'}`} />
                         <span className="text-white font-medium font-sans">Backup #{k.index + 1}</span>
                         <span className="text-white/40 text-[10px] inline-block max-w-[120px] truncate">{k.masked}</span>
+                        {k.healthStatus && k.healthStatus !== "Active" && (
+                          <span className="text-red-400 bg-red-500/5 px-1 py-0.5 rounded text-[8px] font-bold font-mono uppercase">{k.healthStatus}</span>
+                        )}
                       </div>
                       <div>
                         {k.status === "active" ? (
@@ -4547,21 +4962,23 @@ Risk Reminder: ${riskReminder}`;
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 font-sans pt-1">
-                <button
-                  onClick={handleDepleteKey}
-                  disabled={isKeyPoolExhausted || !!userGeminiKey}
-                  className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 hover:text-white text-neutral-400 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all disabled:opacity-40 select-none uppercase pointer-events-auto"
-                >
-                  Skip active server
-                </button>
-                <button
-                  onClick={handleResetKeyPool}
-                  className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 text-neutral-300 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all select-none uppercase"
-                >
-                  Reset backup pool
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="grid grid-cols-2 gap-2 font-sans pt-1">
+                  <button
+                    onClick={handleDepleteKey}
+                    disabled={isKeyPoolExhausted || !!userGeminiKey}
+                    className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 hover:text-white text-neutral-400 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all disabled:opacity-40 select-none uppercase pointer-events-auto cursor-pointer"
+                  >
+                    Skip active server
+                  </button>
+                  <button
+                    onClick={handleResetKeyPool}
+                    className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 text-neutral-300 text-[10px] py-2.5 rounded-lg font-mono font-semibold transition-all select-none uppercase cursor-pointer"
+                  >
+                    Reset backup pool
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Panel 3: Dedicated User API Key Telemetry Dashboard */}
