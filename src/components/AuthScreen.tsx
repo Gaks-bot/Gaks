@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { supabase } from "../supabaseClient";
 
 interface AuthScreenProps {
   authView: "login" | "signup" | "forgot_password" | "reset_password";
@@ -20,6 +21,7 @@ interface AuthScreenProps {
   handleLogin: (e: React.FormEvent) => Promise<void>;
   handleForgotPassword: (e: React.FormEvent) => Promise<void>;
   handleUpdatePassword: (e: React.FormEvent) => Promise<void>;
+  onSandboxBypass: () => void;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
@@ -42,6 +44,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   handleLogin,
   handleForgotPassword,
   handleUpdatePassword,
+  onSandboxBypass,
 }) => {
   // Password visible toggles
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -169,13 +172,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {authError && (
           <div 
             id="auth-error-alert"
-            className="p-3.5 mb-5 rounded-xl border bg-neutral-900 border-neutral-800 text-rose-455 text-xs leading-relaxed flex items-start gap-2.5 animate-fadeIn"
+            className="p-3.5 mb-5 rounded-xl border bg-neutral-900 border-neutral-800 text-rose-455 text-xs leading-relaxed animate-fadeIn"
           >
-            <i className="ph ph-warning-circle text-base mt-0.5 text-neutral-400 flex-shrink-0" />
-            <div>
-              <span className="font-bold block mb-0.5 text-white">Authentication Alert</span>
-              {authError}
+            <div className="flex items-start gap-2.5">
+              <i className="ph ph-warning-circle text-base mt-0.5 text-neutral-400 flex-shrink-0" />
+              <div>
+                <span className="font-bold block mb-0.5 text-white">Authentication Alert</span>
+                {authError}
+              </div>
             </div>
+            {(authError.toLowerCase().includes("hibernating") || authError.toLowerCase().includes("fetch") || authError.toLowerCase().includes("unreachable")) && (
+              <div className="mt-4 pt-3.5 border-t border-neutral-800 flex flex-col gap-2">
+                <p className="text-[10px] text-neutral-400 m-0">The remote authentication node is currently sleeping or offline. You can play or analyze instantly using our Offline Sandbox Engine:</p>
+                <button
+                  type="button"
+                  onClick={onSandboxBypass}
+                  className="w-full h-10 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer transition-all border-none"
+                >
+                  <i className="ph ph-shield-check text-sm" />
+                  <span>Bypass to Sandbox Session</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -268,6 +286,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   <span>Login</span>
                 </>
               )}
+            </button>
+
+            <div className="relative flex py-3 items-center">
+              <div className="flex-grow border-t border-neutral-900"></div>
+              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-neutral-600">OR</span>
+              <div className="flex-grow border-t border-neutral-900"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onSandboxBypass}
+              className="w-full h-11 bg-transparent hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-emerald-400 text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <i className="ph ph-shield-check text-sm animate-pulse" />
+              <span>Enter Sandbox Mode (Skip Auth)</span>
             </button>
 
             {authError && (
@@ -393,6 +426,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   <span>Create Account</span>
                 </>
               )}
+            </button>
+
+            <div className="relative flex py-3 items-center">
+              <div className="flex-grow border-t border-neutral-900"></div>
+              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono font-bold tracking-widest text-neutral-600">OR</span>
+              <div className="flex-grow border-t border-neutral-900"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onSandboxBypass}
+              className="w-full h-11 bg-transparent hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-emerald-400 text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <i className="ph ph-shield-check text-sm animate-pulse" />
+              <span>Enter Sandbox Mode (Skip Auth)</span>
             </button>
 
             {authError && (

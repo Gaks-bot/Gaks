@@ -337,13 +337,133 @@ export default function App() {
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string>("");
   const [authActionLoading, setAuthActionLoading] = useState<boolean>(false);
 
-  // Profile dropdown active status helper state
-  const [profileDropdownOpen, setProfileDropdownOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [settingsFullName, setSettingsFullName] = useState<string>("");
+  const [settingsUpdateStatus, setSettingsUpdateStatus] = useState<string>("");
+
+  // Account-Based Risk Management Settings Interface & State Declarations
+  const [riskSettings, setRiskSettings] = useState<{
+    accountSize: number;
+    riskPercent: number;
+    maxDailyLossPercent: number;
+    preferredRr: number;
+    tradingStyle: "Conservative" | "Balanced" | "Aggressive";
+    accountType: "Personal" | "Funded" | "Prop Firm";
+    propFirmName: string;
+  }>(() => {
+    const stored = localStorage.getItem("gaks_risk_settings");
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (_) {}
+    }
+    return {
+      accountSize: 100000,
+      riskPercent: 1.0,
+      maxDailyLossPercent: 5.0,
+      preferredRr: 2.0,
+      tradingStyle: "Balanced",
+      accountType: "Prop Firm",
+      propFirmName: "FTMO"
+    };
+  });
+  const [riskSaveStatus, setRiskSaveStatus] = useState<string>("");
+
+  const [tempAccountSize, setTempAccountSize] = useState<number>(100000);
+  const [tempRiskPercent, setTempRiskPercent] = useState<number>(1.0);
+  const [tempMaxDailyLoss, setTempMaxDailyLoss] = useState<number>(5.0);
+  const [tempPreferredRr, setTempPreferredRr] = useState<number>(2.0);
+  const [tempTradingStyle, setTempTradingStyle] = useState<"Conservative" | "Balanced" | "Aggressive">("Balanced");
+  const [tempAccountType, setTempAccountType] = useState<"Personal" | "Funded" | "Prop Firm">("Prop Firm");
+  const [tempPropFirmName, setTempPropFirmName] = useState<string>("FTMO");
+
+  useEffect(() => {
+    if (isSettingsOpen) {
+      setTempAccountSize(riskSettings.accountSize);
+      setTempRiskPercent(riskSettings.riskPercent);
+      setTempMaxDailyLoss(riskSettings.maxDailyLossPercent);
+      setTempPreferredRr(riskSettings.preferredRr);
+      setTempTradingStyle(riskSettings.tradingStyle);
+      setTempAccountType(riskSettings.accountType);
+      setTempPropFirmName(riskSettings.propFirmName);
+    }
+  }, [isSettingsOpen, riskSettings]);
+
+  const applyPropFirmPreset = (firmName: string, size: number) => {
+    setTempAccountType("Prop Firm");
+    setTempPropFirmName(firmName);
+    setTempAccountSize(size);
+    if (firmName === "The5ers") {
+      setTempMaxDailyLoss(3.0);
+      setTempRiskPercent(0.5);
+      setTempTradingStyle("Conservative");
+    } else {
+      setTempMaxDailyLoss(5.0);
+      setTempRiskPercent(1.0);
+      setTempTradingStyle("Balanced");
+    }
+    setTempPreferredRr(2.0);
+  };
+
+  useEffect(() => {
+    if (session?.user?.user_metadata?.riskSettings) {
+      setRiskSettings(session.user.user_metadata.riskSettings);
+    }
+  }, [session]);
+
+  const handleSaveRiskSettings = async (newSettings: typeof riskSettings) => {
+    setRiskSettings(newSettings);
+    localStorage.setItem("gaks_risk_settings", JSON.stringify(newSettings));
+    setRiskSaveStatus("Risk parameters saved successfully!");
+    setTimeout(() => setRiskSaveStatus(""), 3000);
+
+    if (session?.user) {
+      try {
+        await supabase.auth.updateUser({
+          data: { riskSettings: newSettings }
+        });
+      } catch (err) {
+        console.warn("Verification error saving to cloud metadata node:", err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (session?.user?.user_metadata?.full_name) {
+      setSettingsFullName(session.user.user_metadata.full_name);
+    } else {
+      setSettingsFullName("");
+    }
+  }, [session]);
+
+  const handleUpdateSettingsName = async () => {
+    if (!settingsFullName.trim()) {
+      setSettingsUpdateStatus("Name cannot be empty.");
+      return;
+    }
+    setSettingsUpdateStatus("Updating...");
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: { full_name: settingsFullName.trim() }
+      });
+      if (error) {
+        setSettingsUpdateStatus(`Error: ${error.message}`);
+      } else {
+        setSettingsUpdateStatus("Profile updated successfully!");
+        setTimeout(() => setSettingsUpdateStatus(""), 3000);
+      }
+    } catch (err: any) {
+      setSettingsUpdateStatus(err.message || "An error occurred.");
+    }
+  };
 
   // Check and listen for active Supabase user sessions
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      setAuthLoading(false);
+    }).catch((err) => {
+      console.warn("Initial session recovery failed:", err);
       setAuthLoading(false);
     });
 
@@ -430,7 +550,11 @@ export default function App() {
         },
       });
       if (error) {
-        setAuthError(error.message);
+        if (error.message.includes("Failed to fetch") || error.message.includes("fetch")) {
+          setAuthError("The remote database is currently hibernating (regular free-tier idle state) or unreachable. Click 'Bypass to Sandbox Session' to play offline instantly!");
+        } else {
+          setAuthError(error.message);
+        }
       } else {
         if (data.user && !data.session) {
           setAuthSuccessMsg("Registration successful! Check your email inbox to confirm your email address and verify this profile.");
@@ -445,7 +569,12 @@ export default function App() {
         setAuthConfirmPassword("");
       }
     } catch (err: any) {
-      setAuthError(err.message || "An error occurred during authentication.");
+      const msg = err.message || "An error occurred during authentication.";
+      if (msg.includes("Failed to fetch") || msg.includes("fetch")) {
+        setAuthError("The remote database is currently hibernating (regular free-tier idle state) or unreachable. Click 'Bypass to Sandbox Session' to play offline instantly!");
+      } else {
+        setAuthError(msg);
+      }
     } finally {
       setAuthActionLoading(false);
     }
@@ -468,7 +597,11 @@ export default function App() {
         password: authPassword,
       });
       if (error) {
-        setAuthError(error.message);
+        if (error.message.includes("Failed to fetch") || error.message.includes("fetch")) {
+          setAuthError("The remote database is currently hibernating (regular free-tier idle state) or unreachable. Click 'Bypass to Sandbox Session' to play offline instantly!");
+        } else {
+          setAuthError(error.message);
+        }
       } else {
         setAuthSuccessMsg("Signed in successfully!");
         setAuthEmail("");
@@ -479,7 +612,12 @@ export default function App() {
         setCurrentPage("market");
       }
     } catch (err: any) {
-      setAuthError(err.message || "An error occurred during login.");
+      const msg = err.message || "An error occurred during login.";
+      if (msg.includes("Failed to fetch") || msg.includes("fetch")) {
+        setAuthError("The remote database is currently hibernating (regular free-tier idle state) or unreachable. Click 'Bypass to Sandbox Session' to play offline instantly!");
+      } else {
+        setAuthError(msg);
+      }
     } finally {
       setAuthActionLoading(false);
     }
@@ -556,7 +694,6 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    setProfileDropdownOpen(false);
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -803,12 +940,31 @@ export default function App() {
   const handleUserKeyChange = (key: string) => {
     setUserGeminiKey(key);
     localStorage.setItem("gaks_user_gemini_key", key);
+    if (session?.user?.email) {
+      localStorage.setItem("gaks_user_gemini_key_email", session.user.email);
+    } else {
+      localStorage.removeItem("gaks_user_gemini_key_email");
+    }
     if (key.trim()) {
       setIsKeyPoolExhausted(false); // Override shared depletion
     } else {
       fetchKeyPoolStatus();
     }
   };
+
+  useEffect(() => {
+    if (session?.user?.email) {
+      const currentEmail = session.user.email;
+      const storedEmail = localStorage.getItem("gaks_user_gemini_key_email");
+      if (storedEmail && storedEmail !== currentEmail) {
+        localStorage.removeItem("gaks_user_gemini_key");
+        localStorage.removeItem("gaks_user_gemini_key_email");
+        setUserGeminiKey("");
+      } else if (!storedEmail && localStorage.getItem("gaks_user_gemini_key")) {
+        localStorage.setItem("gaks_user_gemini_key_email", currentEmail);
+      }
+    }
+  }, [session]);
 
   const [isTestingKey, setIsTestingKey] = useState<boolean>(false);
   const [keyTestResult, setKeyTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -2240,6 +2396,18 @@ Risk Reminder: ${riskReminder}`;
         handleLogin={handleLogin}
         handleForgotPassword={handleForgotPassword}
         handleUpdatePassword={handleUpdatePassword}
+        onSandboxBypass={() => {
+          setSession({
+            user: {
+              id: "sandbox-trader-id",
+              email: authEmail.trim() || "sandbox@gaks.ai",
+              user_metadata: {
+                full_name: authFullName.trim() || "Sandbox Trader"
+              }
+            }
+          });
+          setCurrentPage("market");
+        }}
       />
     );
   }
@@ -2247,56 +2415,22 @@ Risk Reminder: ${riskReminder}`;
   return (
     <div>
       {/* Header Top Container */}
-      <div className="header-top relative flex justify-between items-center px-5 py-4 border-b border-neutral-900 bg-neutral-950">
-        <span className="font-bold tracking-tight text-white flex items-center gap-2 select-none">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
+      <div className="header-top relative border-b border-neutral-900 bg-neutral-950 px-5">
+        {/* Centered Gaks AI Header */}
+        <span className="font-bold tracking-tight text-white flex items-center gap-2 text-sm sm:text-base select-none">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
           Gaks Ai
         </span>
-        
-        {/* Profile Dropdown displaying User email & Logout button */}
-        <div className="relative flex items-center">
-          <button 
-            onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-            className="flex items-center gap-2 bg-neutral-900 hover:bg-[#1a1a1a] border border-neutral-800 text-neutral-200 text-[11px] px-3 py-1.5 rounded-lg select-none cursor-pointer transition-colors font-sans font-semibold outline-none"
-          >
-            <i className="ph ph-user text-emerald-400 text-sm" />
-            <span className="max-w-[110px] truncate">{session.user?.email}</span>
-            <i className={`ph ph-caret-down text-[10px] transition-transform ${profileDropdownOpen ? "rotate-180" : ""}`} />
-          </button>
 
-          {profileDropdownOpen && (
-            <>
-              {/* Back backdrop to dismiss dropdown */}
-              <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setProfileDropdownOpen(false)} />
-              
-              <div className="absolute right-0 top-full mt-2 w-56 bg-[#151821] border border-neutral-800 rounded-xl shadow-[0_10px_35px_rgba(0,0,0,0.95)] z-50 py-2 animate-fadeIn text-left">
-                <div className="px-4 py-2.5 border-b border-neutral-850">
-                  {session.user?.user_metadata?.full_name && (
-                    <span className="text-xs font-semibold text-white block truncate mb-1" title={session.user.user_metadata.full_name}>
-                      {session.user.user_metadata.full_name}
-                    </span>
-                  )}
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-500 block font-mono font-bold leading-none mb-1">
-                    Authenticated User
-                  </span>
-                  <span className="text-xs text-neutral-400 block truncate font-sans" title={session.user?.email}>
-                    {session.user?.email}
-                  </span>
-                </div>
-                
-                <div className="p-1">
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2.5 text-rose-400 hover:text-white hover:bg-rose-950/25 px-3 py-2 rounded-lg text-xs font-semibold transition-all bg-transparent border-none text-left cursor-pointer font-sans"
-                  >
-                    <i className="ph ph-sign-out text-sm" />
-                    <span>Logout Account</span>
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        {/* Global Settings button at the top right end */}
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          id="global-settings-gear-btn"
+          title="User Settings & Profile"
+          className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center justify-center h-8 w-8 bg-neutral-900 hover:bg-[#1a1a1a] hover:text-emerald-400 border border-neutral-800 text-neutral-400 rounded-lg cursor-pointer transition-colors outline-none font-sans"
+        >
+          <i className="ph ph-gear text-base" />
+        </button>
       </div>
 
       <div className="container">
@@ -3007,27 +3141,203 @@ Risk Reminder: ${riskReminder}`;
                         </div>
                       </div>
 
-                      {/* Live Pip Calculations Tracker */}
-                      <div className="grid grid-cols-3 gap-2 bg-[#0d0d0d] p-2 rounded border border-neutral-800/40 font-mono text-[10px]">
-                        <div className="text-center border-r border-neutral-800/60">
-                          <span className="block text-[8px] text-neutral-600 font-bold uppercase">S/L GAP</span>
-                          <span className={`font-semibold ${slValid ? "text-neutral-400" : "text-rose-500"}`}>
-                            {slPips} pips
-                          </span>
-                        </div>
-                        <div className="text-center border-r border-neutral-800/60">
-                          <span className="block text-[8px] text-neutral-600 font-bold uppercase">T/P GAP</span>
-                          <span className={`font-semibold ${tpValid ? "text-neutral-400" : "text-rose-500"}`}>
-                            {tpPips} pips
-                          </span>
-                        </div>
-                        <div className="text-center">
-                          <span className="block text-[8px] text-neutral-600 font-bold uppercase">R:R RATIO</span>
-                          <span className="font-semibold text-neutral-200">
-                            1:{rrRatio}
-                          </span>
-                        </div>
-                      </div>
+                      {/* Interactive Account-Based Risk Management System Display */}
+                      {(() => {
+                        // Position sizing bounds check and core setup
+                        let unitsPerLot = 100000;
+                        const symUp = symbolTag.toUpperCase();
+                        if (symUp.includes("XAU") || symUp.includes("GOLD")) unitsPerLot = 100;
+                        else if (symUp.includes("XAG")) unitsPerLot = 5000;
+                        else if (symUp.includes("BTC") || symUp.includes("ETH") || symUp.includes("SOL") || symUp.includes("USOIL") || symUp.includes("OIL")) unitsPerLot = 1;
+
+                        const maxRiskCurrencyAmount = riskSettings.accountSize * (riskSettings.riskPercent / 100);
+                        const maxDailyLossAmount = riskSettings.accountSize * (riskSettings.maxDailyLossPercent / 100);
+
+                        const priceSlDistance = Math.abs(nSl - nEntry);
+                        let positionUnits = 0;
+                        let recommendedLots = 0;
+
+                        if (priceSlDistance > 0) {
+                          positionUnits = maxRiskCurrencyAmount / priceSlDistance;
+                          recommendedLots = positionUnits / unitsPerLot;
+                        }
+
+                        // Round lots standard 2 decimals.
+                        // Never increase the user's predefined risk automatically.
+                        const roundedLots = Math.round(recommendedLots * 100) / 100;
+                        const roundedUnits = Math.round(positionUnits);
+
+                        const slPipsHex = mult > 0 ? Math.abs(nSl - nEntry) / mult : 0;
+                        const tpPipsHex = mult > 0 ? Math.abs(nTp - nEntry) / mult : 0;
+                        const slPipsComputed = Math.round(slPipsHex * 10) / 10;
+                        const tpPipsComputed = Math.round(tpPipsHex * 10) / 10;
+                        const realRr = slPipsComputed > 0 ? (tpPipsComputed / slPipsComputed) : 0;
+
+                        // Identify Rule Violations
+                        let setupViolatesRules = false;
+                        let rulesViolationReasons: string[] = [];
+
+                        if (slPipsComputed === 0) {
+                          setupViolatesRules = true;
+                          rulesViolationReasons.push("Stop Loss is required to perform live risk parameters check.");
+                        } else {
+                          if (realRr < riskSettings.preferredRr - 0.005) {
+                            setupViolatesRules = true;
+                            rulesViolationReasons.push(`Setup R:R (1:${realRr.toFixed(2)}) is less than your preferred minimum R:R (1:${riskSettings.preferredRr.toFixed(1)})`);
+                          }
+                          if (maxRiskCurrencyAmount > maxDailyLossAmount) {
+                            setupViolatesRules = true;
+                            rulesViolationReasons.push(`Single trade risk ($${maxRiskCurrencyAmount.toLocaleString()}) exceeds your Maximum Daily Loss limit ($${maxDailyLossAmount.toLocaleString()})`);
+                          }
+                          if (riskSettings.riskPercent > riskSettings.maxDailyLossPercent) {
+                            setupViolatesRules = true;
+                            rulesViolationReasons.push(`Risk per trade (${riskSettings.riskPercent}%) is higher than max daily loss limit (${riskSettings.maxDailyLossPercent}%)`);
+                          }
+                        }
+
+                        return (
+                          <div className="space-y-3 pt-2 font-sans text-left">
+                            {/* Setup Param Compliance Banner */}
+                            {setupViolatesRules ? (
+                              <div className="bg-rose-950/25 border border-rose-500/25 rounded-lg p-3 text-left">
+                                <div className="flex items-center gap-2 text-rose-400">
+                                  <i className="ph ph-shield-warning text-sm font-bold flex-shrink-0" />
+                                  <span className="text-xs font-bold font-mono tracking-wide uppercase">Setup does not meet your risk parameters.</span>
+                                </div>
+                                <div className="pl-6 mt-1.5 text-[10.5px] text-rose-300/80 font-medium space-y-1">
+                                  {rulesViolationReasons.map((reason, rIdx) => (
+                                    <div key={rIdx} className="flex gap-1.5 items-start">
+                                      <span className="text-rose-500">•</span>
+                                      <span>{reason}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-lg p-3 flex items-center gap-2.5 text-left">
+                                <div className="h-5 w-5 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                                  <i className="ph ph-shield-check text-xs font-bold" />
+                                </div>
+                                <div className="flex-1">
+                                  <span className="text-xs font-bold text-emerald-400 font-mono tracking-wide uppercase block font-sans">Setup complies with your risk parameters.</span>
+                                  <span className="text-[9.5px] text-neutral-400 leading-none">All configured drawdown and reward-to-risk rules are satisfied.</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Execution Scorecard Grid */}
+                            <div className="bg-[#0b0c0e] border border-neutral-900 rounded-lg p-3.5 space-y-3">
+                              <div className="flex justify-between items-center pb-2 border-b border-neutral-850">
+                                <div className="flex items-center gap-1.5">
+                                  <i className="ph ph-sliders text-[13px] text-neutral-400" />
+                                  <span className="text-[9.5px] font-mono font-bold tracking-wider uppercase text-neutral-300">
+                                    Account Risk Allocation Matrix
+                                  </span>
+                                </div>
+                                <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded uppercase bg-neutral-900 border border-neutral-850 text-neutral-400">
+                                  {riskSettings.accountType === "Prop Firm" ? `${riskSettings.propFirmName} Preset` : `${riskSettings.accountType} A/C`}
+                                </span>
+                              </div>
+
+                              {/* Direct Configuration Fields for Account Size, Risk %, Drawdown % */}
+                              <div className="grid grid-cols-3 gap-2 font-mono text-[10px] bg-neutral-950/50 p-2.5 rounded-lg border border-neutral-900/80">
+                                <div className="space-y-1">
+                                  <label className="block text-[7.5px] text-neutral-450 font-extrabold uppercase tracking-widest leading-none">
+                                    Cap Size ($)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={riskSettings.accountSize || 100000}
+                                    onChange={(e) => {
+                                      const val = Math.max(1, parseFloat(e.target.value) || 0);
+                                      handleSaveRiskSettings({
+                                        ...riskSettings,
+                                        accountSize: val
+                                      });
+                                    }}
+                                    className="w-full h-8 bg-[#07090b] border border-neutral-850 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-emerald-500 font-bold"
+                                    placeholder="100000"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="block text-[7.5px] text-neutral-450 font-extrabold uppercase tracking-widest leading-none">
+                                    Risk / Cycle %
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0.01"
+                                    max="100"
+                                    value={riskSettings.riskPercent || 1.0}
+                                    onChange={(e) => {
+                                      const val = Math.max(0.01, Math.min(100, parseFloat(e.target.value) || 0));
+                                      handleSaveRiskSettings({
+                                        ...riskSettings,
+                                        riskPercent: val
+                                      });
+                                    }}
+                                    className="w-full h-8 bg-[#07090b] border border-neutral-850 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-emerald-500 font-bold"
+                                    placeholder="1.0"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="block text-[7.5px] text-neutral-450 font-extrabold uppercase tracking-widest leading-none">
+                                    Drawdown %
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0.01"
+                                    max="100"
+                                    value={riskSettings.maxDailyLossPercent || 5.0}
+                                    onChange={(e) => {
+                                      const val = Math.max(0.01, Math.min(100, parseFloat(e.target.value) || 0));
+                                      handleSaveRiskSettings({
+                                        ...riskSettings,
+                                        maxDailyLossPercent: val
+                                      });
+                                    }}
+                                    className="w-full h-8 bg-[#07090b] border border-neutral-850 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-emerald-500 font-bold"
+                                    placeholder="5.0"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3 font-mono">
+                                <div className="border border-neutral-900 bg-neutral-950/60 p-2 rounded">
+                                  <span className="block text-[8px] text-neutral-500 font-bold uppercase mb-0.5">Maximum Risk Exposure</span>
+                                  <span className="font-extrabold text-[#10b981] text-xs">${maxRiskCurrencyAmount.toLocaleString()} ({riskSettings.riskPercent || 1.0}%)</span>
+                                </div>
+                                <div className="border border-neutral-900 bg-neutral-950/60 p-2 rounded">
+                                  <span className="block text-[8px] text-neutral-500 font-bold uppercase mb-0.5">Max Daily Loss Allowed</span>
+                                  <span className="font-extrabold text-rose-400 text-xs">${maxDailyLossAmount.toLocaleString()} ({riskSettings.maxDailyLossPercent || 5.0}%)</span>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3 font-mono pt-0.5">
+                                <div className="border border-neutral-900 bg-neutral-950/65 p-2 rounded col-span-2">
+                                  <span className="block text-[8px] text-neutral-500 font-semibold uppercase mb-0.5">Recommended Position Size</span>
+                                  <div className="flex items-baseline justify-between">
+                                    <span className="font-black text-amber-400 text-sm">
+                                      {slPipsComputed > 0 ? `${roundedLots.toFixed(2)} Lots` : "N/A"}
+                                    </span>
+                                    <span className="text-[10px] font-medium text-neutral-450 font-sans">
+                                      {slPipsComputed > 0 ? `(${roundedUnits.toLocaleString()} units)` : "Awaiting non-zero stop loss"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="bg-neutral-950/90 border border-neutral-900/60 px-3 py-2 rounded-lg text-[10px] leading-relaxed text-neutral-400">
+                                <span className="text-neutral-300 font-semibold">Live Trade Parameters Checked:</span> Entry <span className="text-white font-mono">{nEntry.toFixed(prec)}</span> | SL <span className="text-rose-400 font-mono">{nSl.toFixed(prec)}</span> ({slPipsComputed} pips gap) | TP <span className="text-emerald-400 font-mono">{nTp.toFixed(prec)}</span> ({tpPipsComputed} pips gap) | Risk-to-Reward Ratio <span className="text-amber-400 font-mono font-bold">1:{rrRatio}</span> (Preferred: 1:{riskSettings.preferredRr}).
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Interactive Actions Grid */}
                       <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-neutral-800/60">
@@ -3313,16 +3623,193 @@ Risk Reminder: ${riskReminder}`;
 
         {/* --- WATCHER & ALERTS PAGE --- */}
         <div id="alerts" className={`page ${currentPage === "alerts" ? "active" : ""}`}>
-          <div className="flex flex-col gap-1 mb-6">
-            <h2 className="text-xl font-bold tracking-tight text-white m-0">
-              AI Market Watcher & Alerts
+          <div className="flex flex-col gap-1 mb-8">
+            <h2 className="text-2xl font-bold tracking-tight text-white m-[0px] font-sans">
+              Alerts & Notifications
             </h2>
-            <p className="text-xs text-neutral-500 m-0">
-              Institutional grade scanner & real-time liquidity zone heuristics
-            </p>
           </div>
 
-          <div className="space-y-[15px]">
+          <div className="w-full max-w-sm mx-auto space-y-6">
+            {/* Beautiful customized alert form card matching the screenshot precisely */}
+            <div className="bg-[#0E1110] border border-[#161a18]/40 rounded-3xl p-6 shadow-2xl space-y-4 font-sans">
+              
+              {/* Asset Dropdown Selector */}
+              <div className="relative">
+                <button
+                  type="button"
+                  id="asset-dropdown-selector"
+                  onClick={() => setPairDropdownOpen(!pairDropdownOpen)}
+                  className="w-full h-12 flex justify-between items-center bg-black hover:bg-neutral-900 border border-neutral-900/80 px-4 py-3 rounded-xl text-neutral-100 font-medium select-none cursor-pointer transition-colors"
+                >
+                  <span className="text-sm font-sans font-medium">
+                    {activeMarketAsset.pair} — {formatPrice(activeMarketAsset.pair, activeMarketAsset.price)}
+                  </span>
+                  <i className="ph ph-caret-down text-neutral-450 text-[10px]" />
+                </button>
+
+                {pairDropdownOpen && (
+                  <div className="absolute top-[54px] left-0 w-full bg-black border border-neutral-900 rounded-xl shadow-2xl overflow-hidden z-50 font-mono text-xs max-h-[180px] overflow-y-auto">
+                    {marketPairs.map((coin, index) => (
+                      <div
+                        key={coin.pair}
+                        className={`px-4 py-3 hover:bg-neutral-900 cursor-pointer transition-colors flex justify-between items-center ${
+                          index === selectedPairIndex ? "bg-neutral-900 text-white font-bold" : "text-neutral-400"
+                        }`}
+                        onClick={() => {
+                          setSelectedPairIndex(index);
+                          setPairDropdownOpen(false);
+                          setCustomPriceValue("");
+                        }}
+                      >
+                        <span className="font-sans">{coin.pair}</span>
+                        <span>{formatPrice(coin.pair, coin.price)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Direction selector: Above / Below */}
+              <div className="grid grid-cols-2 gap-3.5">
+                <button
+                  type="button"
+                  onClick={() => setAlertDirection("above")}
+                  className={`h-11 py-2 px-4 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all border flex items-center justify-center gap-1.5 ${
+                    alertDirection === "above"
+                      ? "bg-[#142A1D]/80 border-green-500/50 text-green-400 font-bold"
+                      : "bg-transparent border-neutral-900/60 text-neutral-500 hover:text-neutral-300 hover:border-neutral-850"
+                  }`}
+                >
+                  <span>↑ Above</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlertDirection("below")}
+                  className={`h-11 py-2 px-4 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all border flex items-center justify-center gap-1.5 ${
+                    alertDirection === "below"
+                      ? "bg-[#142A1D]/80 border-green-500/50 text-green-400 font-bold"
+                      : "bg-transparent border-neutral-900/60 text-neutral-500 hover:text-neutral-300 hover:border-neutral-850"
+                  }`}
+                >
+                  <span>↓ Below</span>
+                </button>
+              </div>
+
+              {/* Delivery channel selector: Email / Push */}
+              <div className="grid grid-cols-2 gap-3.5">
+                <button
+                  type="button"
+                  onClick={() => handleToggleChannelSelection("email")}
+                  className={`h-11 py-2 px-4 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all border flex items-center justify-center gap-1.5 ${
+                    alertChannels.includes("email")
+                      ? "bg-neutral-905 border-neutral-800 text-neutral-200"
+                      : "bg-transparent border-neutral-900/60 text-neutral-500 hover:text-neutral-300 hover:border-neutral-850"
+                  }`}
+                >
+                  <span className="text-xs">✉</span>
+                  <span>Email</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleChannelSelection("push")}
+                  className={`h-11 py-2 px-4 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all border flex items-center justify-center gap-1.5 ${
+                    alertChannels.includes("push")
+                      ? "bg-neutral-905 border-neutral-800 text-neutral-200"
+                      : "bg-transparent border-neutral-900/60 text-neutral-500 hover:text-neutral-300 hover:border-neutral-850"
+                  }`}
+                >
+                  <span className="text-xs">📱</span>
+                  <span>Push</span>
+                </button>
+              </div>
+
+              {/* Action row with input and plus-button */}
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  className="flex-1 h-12 bg-black border border-neutral-900 px-4 py-3 text-xs text-neutral-400 rounded-xl font-mono focus:border-neutral-700 outline-none placeholder:text-neutral-600 transition-colors"
+                  value={customPriceValue}
+                  onChange={(e) => setCustomPriceValue(e.target.value)}
+                  placeholder={`Current: ${formatPrice(activeMarketAsset.pair, activeMarketAsset.price)}`}
+                />
+                <button
+                  type="button"
+                  onClick={handleRegisterPriceTriggerAlert}
+                  className="h-12 w-12 bg-neutral-205 hover:bg-white text-black rounded-xl font-bold text-xl flex items-center justify-center select-none cursor-pointer border-none transition-all flex-shrink-0 animate-fadeIn"
+                >
+                  +
+                </button>
+              </div>
+
+            </div>
+
+            {/* Active alerts panel */}
+            <div className="space-y-3 pt-2 font-sans text-left">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#22c55e] font-bold block ml-1">
+                Active Custom Triggers ({customAlertsList.length})
+              </span>
+
+              <div className="space-y-2.5 font-sans">
+                {customAlertsList.map((alertItem) => (
+                  <div
+                    key={alertItem.id}
+                    className="border border-neutral-900 bg-neutral-950/40 rounded-xl p-3.5 flex justify-between items-center transition-all hover:bg-neutral-950/60 font-sans"
+                    style={{
+                      filter: alertItem.isMuted ? "opacity(0.5)" : "none",
+                      transition: "filter 0.2s"
+                    }}
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-white font-mono">
+                          {alertItem.pair}
+                        </span>
+                        <span
+                          className={`text-[8px] px-1.5 py-0.5 rounded font-bold font-mono tracking-wide ${
+                            alertItem.triggered
+                              ? "bg-neutral-850 text-white"
+                              : "bg-neutral-900 border border-neutral-850/60 text-[#22c55e]"
+                          }`}
+                        >
+                          {alertItem.triggered ? "TRIGGERED" : "MONITORING"}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-neutral-405 select-none block mt-1.5">
+                        {alertItem.direction === "above" ? "↑ ABOVE" : "↓ BELOW"}{" "}
+                        {formatPrice(alertItem.pair, parseFloat(alertItem.value))}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-4 items-center text-neutral-500 text-sm font-sans">
+                      <button
+                        type="button"
+                        className="cursor-pointer hover:text-white bg-transparent border-none p-1 flex items-center justify-center"
+                        onClick={() => handleToggleMuteTriggerAlert(alertItem.id)}
+                      >
+                        <i className={alertItem.isMuted ? "ph ph-bell-slash text-xs" : "ph ph-bell text-xs"} />
+                      </button>
+                      <button
+                        type="button"
+                        className="cursor-pointer hover:text-rose-500 bg-transparent border-none p-1 flex items-center justify-center animate-fadeIn"
+                        onClick={() => handleDeleteTriggerAlert(alertItem.id)}
+                      >
+                        <i className="ph ph-trash text-xs" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {customAlertsList.length === 0 && (
+                  <div className="text-left py-4 font-mono text-xs text-neutral-600 pl-1">
+                    No custom target levels currently active. Set a level above to begin monitoring.
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          <div className="space-y-[15px] hidden">
             {/* Watcher Engine Control */}
             <div className="card p-5 relative border border-neutral-800/60 shadow-lg">
               <div className="flex justify-between items-center mb-4">
@@ -3905,167 +4392,8 @@ Risk Reminder: ${riskReminder}`;
               </div>
             </div>
 
-            {/* Custom Manual Target Alerts Form */}
-            <div className="card p-5 border border-neutral-800/60 shadow-lg">
-              <span className="text-xs font-mono uppercase tracking-widest text-neutral-405 font-bold block mb-4">
-                Manual Custom Target Level Alerts
-              </span>
-
-              <div className="bg-black/40 border border-neutral-900 rounded-xl p-4 mb-4">
-                <div className="relative">
-                  <button
-                    className="dropdown-btn flex justify-between items-center bg-black border border-neutral-800 p-2.5 rounded-lg text-xs font-mono text-white mb-3 w-full cursor-pointer"
-                    onClick={() => setPairDropdownOpen(!pairDropdownOpen)}
-                  >
-                    <span>
-                      {activeMarketAsset.pair} — {formatPrice(activeMarketAsset.pair, activeMarketAsset.price)}
-                    </span>
-                    <i className="ph ph-caret-down" />
-                  </button>
-
-                  {pairDropdownOpen && (
-                    <div className="absolute top-11 left-0 w-full bg-[#1e1e1e] border border-neutral-800 rounded-lg shadow-xl overflow-hidden z-50 animate-fadeIn font-mono text-xs">
-                      {marketPairs.map((coin, index) => (
-                        <div
-                          key={coin.pair}
-                          className={`px-3 py-2.5 hover:bg-neutral-800 cursor-pointer transition-colors duration-200 flex justify-between items-center ${
-                            index === selectedPairIndex ? "bg-neutral-800 text-white font-bold" : "text-neutral-400"
-                          }`}
-                          onClick={() => {
-                            setSelectedPairIndex(index);
-                            setPairDropdownOpen(false);
-                          }}
-                        >
-                          <span>{coin.pair}</span>
-                          <span>{formatPrice(coin.pair, coin.price)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="toggle-row mb-3 flex gap-2">
-                  <button
-                    className={`flex-1 py-1.5 px-3 border rounded text-[11px] font-mono text-center cursor-pointer transition-colors ${
-                      alertDirection === "above"
-                        ? "bg-white text-black border-white font-bold"
-                        : "bg-transparent text-neutral-405 border-neutral-800"
-                    }`}
-                    onClick={() => setAlertDirection("above")}
-                  >
-                    ↑ Above Trigger
-                  </button>
-                  <button
-                    className={`flex-1 py-1.5 px-3 border rounded text-[11px] font-mono text-center cursor-pointer transition-colors ${
-                      alertDirection === "below"
-                        ? "bg-white text-black border-white font-bold"
-                        : "bg-transparent text-neutral-400 border-neutral-800"
-                    }`}
-                    onClick={() => setAlertDirection("below")}
-                  >
-                    ↓ Below Trigger
-                  </button>
-                </div>
-
-                <div className="toggle-row mb-3 flex gap-2">
-                  <button
-                    className={`flex-1 py-1.5 px-2 border rounded text-[11px] font-mono text-center cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
-                      alertChannels.includes("email")
-                        ? "bg-neutral-200 text-black border-white font-bold"
-                        : "bg-transparent text-neutral-405 border-neutral-800"
-                    }`}
-                    onClick={() => handleToggleChannelSelection("email")}
-                  >
-                    Email Channels
-                  </button>
-                  <button
-                    className={`flex-1 py-1.5 px-2 border rounded text-[11px] font-mono text-center cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
-                      alertChannels.includes("push")
-                        ? "bg-neutral-200 text-black border-white font-bold"
-                        : "bg-transparent text-neutral-405 border-neutral-800"
-                    }`}
-                    onClick={() => handleToggleChannelSelection("push")}
-                  >
-                    Push Native
-                  </button>
-                </div>
-
-                <div className="input-row flex gap-2">
-                  <input
-                    type="number"
-                    step="0.0001"
-                    className="price-input bg-black border border-neutral-800 p-2 text-xs text-white rounded-lg font-mono flex-1 outline-none"
-                    value={customPriceValue}
-                    onChange={(e) => setCustomPriceValue(e.target.value)}
-                    placeholder={`Current: ${formatPrice(activeMarketAsset.pair, activeMarketAsset.price)}`}
-                  />
-                  <button
-                    className="px-4.5 bg-neutral-200 hover:bg-white text-black font-bold text-xs rounded-lg transition-colors cursor-pointer border-none"
-                    onClick={handleRegisterPriceTriggerAlert}
-                  >
-                    Set Level
-                  </button>
-                </div>
-              </div>
-
-              {/* Set Manual Alerts History List */}
-              <div className="space-y-[10px]">
-                {customAlertsList.map((alertItem) => (
-                  <div
-                    key={alertItem.id}
-                    className="border border-neutral-800 bg-black/40 rounded-xl p-3 flex justify-between items-center"
-                    style={{
-                      filter: alertItem.isMuted ? "opacity(0.6)" : "none",
-                      transition: "filter 0.2s"
-                    }}
-                  >
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-white font-mono">
-                          {alertItem.pair}
-                        </span>
-                        <span
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-                            alertItem.triggered
-                              ? "bg-neutral-800 text-white"
-                              : "bg-neutral-900 text-neutral-400 border border-neutral-850"
-                          }`}
-                        >
-                          {alertItem.triggered ? "TRIGGERED" : "MONITORING"}
-                        </span>
-                      </div>
-                      <span className="text-xs font-mono text-neutral-400 select-none block mt-1">
-                        {alertItem.direction === "above" ? "↑ ABOVE" : "↓ BELOW"}{" "}
-                        {formatPrice(alertItem.pair, parseFloat(alertItem.value))}
-                      </span>
-                    </div>
-
-                    <div className="flex gap-4 items-center text-neutral-450 text-sm">
-                      <span
-                        className="cursor-pointer hover:text-white"
-                        onClick={() => handleToggleMuteTriggerAlert(alertItem.id)}
-                      >
-                        <i className={alertItem.isMuted ? "ph ph-bell-slash text-xs" : "ph ph-bell text-xs"} />
-                      </span>
-                      <span
-                        className="cursor-pointer hover:text-rose-500"
-                        onClick={() => handleDeleteTriggerAlert(alertItem.id)}
-                      >
-                        <i className="ph ph-trash text-xs" />
-                      </span>
-                    </div>
-                  </div>
-                ))}
-
-                {customAlertsList.length === 0 && (
-                  <div className="text-center py-4 font-mono text-xs text-neutral-600">
-                    No custom target levels stored
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
+      </div>
 
         {/* --- API KEYS CLUSTER PAGE --- */}
         <div id="keys" className={`page ${currentPage === "keys" ? "active" : ""}`}>
@@ -4594,6 +4922,409 @@ Risk Reminder: ${riskReminder}`;
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Slide-over Profile & Settings Drawer */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-[1000] overflow-hidden flex justify-end">
+          {/* Backdrop blur overlay */}
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-fadeIn" 
+            onClick={() => setIsSettingsOpen(false)} 
+          />
+          
+          {/* Drawer context container */}
+          <div className="relative w-full max-w-md bg-[#090b0e] border-l border-neutral-900/90 shadow-[0_0_50px_rgba(0,0,0,0.85)] h-full flex flex-col z-10 animate-slideIn">
+            
+            {/* Drawer Header layout bar */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-900 bg-neutral-950">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-lg bg-[#0e2a1b] flex items-center justify-center text-emerald-400 border border-emerald-500/10">
+                  <i className="ph ph-gear text-base" />
+                </div>
+                <div className="text-left font-sans">
+                  <h3 className="text-sm font-bold text-neutral-100 m-0">Settings & Profile</h3>
+                  <p className="text-[10px] text-neutral-500 font-mono m-0">User preferences & security node</p>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setIsSettingsOpen(false)}
+                className="h-8 w-8 rounded-lg hover:bg-neutral-900 hover:text-white text-neutral-500 flex items-center justify-center cursor-pointer transition-colors bg-transparent border-none"
+              >
+                <i className="ph ph-x text-base" />
+              </button>
+            </div>
+            
+            {/* Scrollable preferences drawer body items block */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              
+              {/* Profile Identity & Supremacy segment */}
+              <div className="space-y-3.5">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#10b981] block">
+                  authenticated user profile
+                </span>
+                <div className="bg-[#0e1114] border border-neutral-900 rounded-2xl p-4 flex gap-4 items-center">
+                  <div className="h-11 w-11 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-emerald-450 font-bold font-sans text-sm select-none">
+                    {(session.user?.user_metadata?.full_name || session.user?.email || "U").substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0 text-left font-sans">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-white block truncate">
+                        {session.user?.user_metadata?.full_name || "Gaks Trader"}
+                      </span>
+                      <span className="text-[8px] px-1.5 py-0.5 rounded-md font-bold font-mono bg-neutral-900 border border-neutral-850/60 text-emerald-400 select-none">
+                        PRO LEVEL
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400 block truncate font-mono mt-1 select-all" title={session.user?.email}>
+                      {session.user?.email}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Profile Display Name Update Input element */}
+                <div className="bg-black/25 border border-neutral-900 rounded-xl p-4 space-y-2 text-left font-sans">
+                  <label className="text-[9.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block">
+                    Update Profile Name
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={settingsFullName}
+                      onChange={(e) => setSettingsFullName(e.target.value)}
+                      placeholder="e.g. Gaks Pro Trader"
+                      className="flex-1 h-9 bg-neutral-950 border border-neutral-900 hover:border-neutral-850 px-3 py-1.5 text-xs text-white rounded-lg focus:border-neutral-800 outline-none transition-colors font-sans"
+                    />
+                    <button
+                      onClick={handleUpdateSettingsName}
+                      className="h-9 px-3 bg-neutral-100 hover:bg-white text-black font-bold text-xs rounded-lg transition-all cursor-pointer border-none flex-shrink-0 flex items-center justify-center"
+                    >
+                      Update
+                    </button>
+                  </div>
+                  {settingsUpdateStatus && (
+                    <span className={`text-[10px] block font-mono ${settingsUpdateStatus.includes("Error") ? "text-rose-400" : "text-emerald-400"}`}>
+                      {settingsUpdateStatus}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Account-Based Risk Management System Segment */}
+              <div className="space-y-3.5">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#10b981] block">
+                  Account Risk Management Suite
+                </span>
+                <div className="bg-[#0e1114] border border-neutral-900 rounded-2xl p-4.5 space-y-4 text-left font-sans">
+                  
+                  {/* Account Classification */}
+                  <div>
+                    <label className="text-[9px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-2">
+                      Account Classification & Tier
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(["Personal", "Funded", "Prop Firm"] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            setTempAccountType(type);
+                            if (type !== "Prop Firm") {
+                              setTempPropFirmName("None");
+                            } else {
+                              setTempPropFirmName("FTMO");
+                            }
+                          }}
+                          className={`py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                            tempAccountType === type
+                              ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400"
+                              : "bg-neutral-950 border-neutral-900 text-neutral-400 hover:text-neutral-250"
+                          }`}
+                        >
+                          {type === "Prop Firm" ? "Prop Firm" : `${type} A/C`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Prop Firm Selection and Preset (Only when Prop Firm is active) */}
+                  {tempAccountType === "Prop Firm" && (
+                    <div className="space-y-3 p-3 bg-black/40 border border-neutral-900/90 rounded-xl">
+                      <div>
+                        <label className="text-[8.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-1.5">
+                          Prop Firm Provider Preset
+                        </label>
+                        <div className="flex flex-wrap gap-1">
+                          {["FTMO", "MyFundedFX", "The5ers", "Funded Next", "Funded Pips"].map((firm) => (
+                            <button
+                              key={firm}
+                              type="button"
+                              onClick={() => applyPropFirmPreset(firm, tempAccountSize)}
+                              className={`px-2 py-1 rounded text-[9px] font-mono font-bold border transition-all cursor-pointer ${
+                                tempPropFirmName === firm
+                                  ? "bg-amber-500/10 border-amber-500/40 text-amber-500 font-semibold"
+                                  : "bg-neutral-950 border-neutral-900 text-neutral-400 hover:text-neutral-250"
+                              }`}
+                            >
+                              {firm === "Funded Next" ? "Funded Next" : firm}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[8.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-1.5">
+                          Standard Account Sizes
+                        </label>
+                        <div className="grid grid-cols-5 gap-1 font-mono text-[9px]">
+                          {[10000, 25000, 50000, 100000, 200000].map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => applyPropFirmPreset(tempPropFirmName, val)}
+                              className={`py-1 rounded border transition-all cursor-pointer text-[9px] font-bold text-center ${
+                                tempAccountSize === val
+                                  ? "bg-neutral-800 border-neutral-600 text-white"
+                                  : "bg-neutral-950 border-neutral-900 text-neutral-500 hover:text-neutral-350"
+                              }`}
+                            >
+                              ${val / 1000}k
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Manual Override Parameters Inputs */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[9px] font-semibold text-neutral-400 font-mono uppercase tracking-wider block mb-1">
+                        Capital Balance ($)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={tempAccountSize}
+                        onChange={(e) => setTempAccountSize(Math.max(1, parseFloat(e.target.value) || 0))}
+                        className="w-full h-9 bg-neutral-950 border border-neutral-900 hover:border-neutral-850 px-3 py-1 text-xs text-white rounded-lg focus:border-neutral-800 outline-none font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] font-semibold text-neutral-400 font-mono uppercase tracking-wider block mb-1">
+                        Trading Risk Profile
+                      </label>
+                      <select
+                        value={tempTradingStyle}
+                        onChange={(e) => {
+                          const style = e.target.value as "Conservative" | "Balanced" | "Aggressive";
+                          setTempTradingStyle(style);
+                          if (style === "Conservative") setTempRiskPercent(0.5);
+                          else if (style === "Balanced") setTempRiskPercent(1.0);
+                          else if (style === "Aggressive") setTempRiskPercent(2.0);
+                        }}
+                        className="w-full h-9 bg-neutral-950 border border-neutral-900 hover:border-neutral-850 px-2 py-1 text-xs text-white rounded-lg focus:border-neutral-850 outline-none transition-colors"
+                      >
+                        <option value="Conservative">Conservative (0.5%)</option>
+                        <option value="Balanced">Balanced (1.0%)</option>
+                        <option value="Aggressive">Aggressive (2.0%)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pb-0.5">
+                    <div>
+                      <label className="text-[8.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-1">
+                        Risk / Trade %
+                      </label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0.01"
+                        max="25"
+                        value={tempRiskPercent}
+                        onChange={(e) => setTempRiskPercent(Math.max(0.01, parseFloat(e.target.value) || 0.1))}
+                        className="w-full h-8 bg-neutral-950 border border-neutral-900 hover:border-neutral-850 px-2 py-1 text-xs text-white rounded-lg focus:border-neutral-800 outline-none font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[8.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-1">
+                        Max Daily Loss %
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        max="100"
+                        value={tempMaxDailyLoss}
+                        onChange={(e) => setTempMaxDailyLoss(Math.max(0.1, parseFloat(e.target.value) || 1.0))}
+                        className="w-full h-8 bg-neutral-950 border border-neutral-900 hover:border-neutral-850 px-2 py-1 text-xs text-white rounded-lg focus:border-neutral-800 outline-none font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[8.5px] font-semibold text-neutral-500 font-mono uppercase tracking-wider block mb-1">
+                        Preferred R:R
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        max="100"
+                        value={tempPreferredRr}
+                        onChange={(e) => setTempPreferredRr(Math.max(0.1, parseFloat(e.target.value) || 1.0))}
+                        className="w-full h-8 bg-neutral-950 border border-neutral-900 hover:border-neutral-850 px-2 py-1 text-xs text-white rounded-lg focus:border-neutral-800 outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Calculated metrics live audit card */}
+                  <div className="bg-[#090b0e] border border-neutral-900 rounded-xl p-3 text-[10.5px] font-mono space-y-1.5">
+                    <div className="flex justify-between text-neutral-400">
+                      <span>Cap Size ({tempAccountType === "Prop Firm" ? tempPropFirmName : tempAccountType}):</span>
+                      <span className="text-white font-bold">${tempAccountSize.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-neutral-400">
+                      <span>Maximum Risk Per Cycle:</span>
+                      <span className="text-[#10b981] font-bold">${(tempAccountSize * (tempRiskPercent / 100)).toLocaleString()} ({tempRiskPercent}%)</span>
+                    </div>
+                    <div className="flex justify-between text-neutral-400">
+                      <span>Daily Drawdown Limit:</span>
+                      <span className="text-rose-400 font-bold">${(tempAccountSize * (tempMaxDailyLoss / 100)).toLocaleString()} ({tempMaxDailyLoss}%)</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveRiskSettings({
+                        accountSize: tempAccountSize,
+                        riskPercent: tempRiskPercent,
+                        maxDailyLossPercent: tempMaxDailyLoss,
+                        preferredRr: tempPreferredRr,
+                        tradingStyle: tempTradingStyle,
+                        accountType: tempAccountType,
+                        propFirmName: tempPropFirmName
+                      })}
+                      className="w-full h-10 select-none cursor-pointer border border-[#10b981]/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <i className="ph ph-shield-check text-xs" />
+                      <span>Save & Apply Risk Settings</span>
+                    </button>
+                    {riskSaveStatus && (
+                      <span className="text-[10px] block text-emerald-450 font-mono mt-2 text-center animate-fadeIn">
+                        ✓ {riskSaveStatus}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Personal Gemini API Settings container */}
+              <div className="space-y-3.5">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#10b981] block">
+                  Personal AI Credentials
+                </span>
+                <div className="bg-[#0e1114] border border-neutral-900 rounded-2xl p-4.5 space-y-4 text-left font-sans">
+                  <div>
+                    <p className="text-xs text-neutral-400 leading-normal mb-3">
+                      Store your personal Google Gemini API Key here to bypass shared connection limits. All analysis runs directly from your personal secure token.
+                    </p>
+                    
+                    <div className="relative">
+                      <input
+                        type="password"
+                        placeholder="Paste Gemini API Key (e.g. AIzaSy...)"
+                        value={userGeminiKey}
+                        onChange={(e) => handleUserKeyChange(e.target.value)}
+                        className="w-full h-10 bg-neutral-950 border border-neutral-900 px-3.5 py-2 rounded-lg text-xs text-white placeholder:text-neutral-700 focus:border-neutral-800 outline-none font-mono"
+                      />
+                      {userGeminiKey && (
+                        <button
+                          onClick={() => handleUserKeyChange("")}
+                          className="absolute right-2.5 top-1.5 hover:text-rose-400 text-neutral-500 cursor-pointer text-xs p-1 bg-transparent border-none font-sans font-semibold transition-colors"
+                          title="Wipe key from credentials store"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* API connections handshake testers button */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleTestUserKey}
+                      disabled={isTestingKey}
+                      className="flex-1 h-9 bg-transparent border border-neutral-850 hover:bg-neutral-900 text-neutral-300 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer select-none disabled:opacity-50"
+                    >
+                      {isTestingKey ? (
+                        <>
+                          <i className="ph ph-circle-notch animate-spin text-neutral-405" />
+                          <span>Pinging Google API...</span>
+                        </>
+                      ) : (
+                        <>
+                          <i className="ph ph-activity text-emerald-400" />
+                          <span>Test API Auth Connection</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {keyTestResult && (
+                    <div className={`p-3 rounded-lg border text-xs font-mono ${
+                      keyTestResult.success 
+                        ? "bg-emerald-950/25 border-emerald-500/20 text-emerald-400 animate-fadeIn" 
+                        : "bg-rose-950/25 border-rose-500/20 text-rose-400 animate-fadeIn"
+                    }`}>
+                      <span className="block font-black mb-1 text-[10px] uppercase">
+                        {keyTestResult.success ? "✓ API Handshake Complete" : "✗ Diagnostics Handshake Refused"}
+                      </span>
+                      <span className="text-[10px] font-sans leading-normal block text-neutral-400">
+                        {keyTestResult.message}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Advanced app reset node action triggers */}
+              <div className="space-y-3.5">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#f43f5e] block">
+                  Advanced Actions Area
+                </span>
+                <button
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    handleResetApplicationState();
+                  }}
+                  className="w-full h-10 select-none cursor-pointer border border-[#f43f5e]/30 bg-[#f43f5e]/5 hover:bg-[#f43f5e]/15 text-[#f43f5e] rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all font-sans"
+                >
+                  <i className="ph ph-trash" />
+                  <span>Wipe All Alerts & Strategy States</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Custom drawer bottom footer control layout */}
+            <div className="p-6 border-t border-neutral-900 bg-neutral-950 flex flex-col gap-2 font-sans">
+              <button
+                onClick={handleLogout}
+                className="w-full h-11 bg-rose-950/30 hover:bg-rose-950/80 text-rose-400 hover:text-white border border-rose-900/35 rounded-xl text-xs font-bold flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+              >
+                <i className="ph ph-sign-out text-sm" />
+                <span>Sign out from Session</span>
+              </button>
+              <p className="text-[9px] text-neutral-600 font-mono text-center m-0 mt-1">
+                Gaks Client v2.5.0 • Sandbox Node Port: 3000
+              </p>
+            </div>
           </div>
         </div>
       )}
