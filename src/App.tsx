@@ -283,6 +283,8 @@ function formatPrice(pair: string, price: number): string {
     : price.toFixed(4);
 }
 
+const DUMMY_BLACK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
 const COMMON_PAIRS = [
   { symbol: "EURUSD", label: "EURUSD (Euro / US Dollar)", category: "Forex" },
   { symbol: "GBPUSD", label: "GBPUSD (British Pound / US Dollar)", category: "Forex" },
@@ -729,6 +731,7 @@ export default function App() {
   };
 
   // Image upload and analyzer states
+  const [analysisMode, setAnalysisMode] = useState<"live" | "screenshot">("live");
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
@@ -759,6 +762,52 @@ export default function App() {
   const [isDetectingSymbol, setIsDetectingSymbol] = useState<boolean>(false);
   const [detectionConfidence, setDetectionConfidence] = useState<string | null>(null);
   const [isBiggerPictureMode, setIsBiggerPictureMode] = useState<boolean>(true);
+
+  // Twelve Data OHLC States and Hook
+  const [twelveDataCandle, setTwelveDataCandle] = useState<any>(null);
+  const [twelveDataLoading, setTwelveDataLoading] = useState<boolean>(false);
+  const [twelveDataError, setTwelveDataError] = useState<string | null>(null);
+
+  const fetchTwelveDataCandle = async (symbol: string, timeframe: string) => {
+    if (!symbol || !timeframe) {
+      setTwelveDataCandle(null);
+      return;
+    }
+    setTwelveDataLoading(true);
+    setTwelveDataError(null);
+    try {
+      const response = await fetch("/api/twelve-data-ohlc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol, timeframe })
+      });
+      const data = await response.json();
+      if (response.ok && data.status === "success") {
+        setTwelveDataCandle(data.candle);
+      } else {
+        setTwelveDataCandle(null);
+        if (data.error === "TWELVEDATA_API_KEY_MISSING") {
+          setTwelveDataError("Twelve Data API Key is not configured on the server. Please define 'TWELVEDATA_API_KEY' in your environment secrets to unlock live Twelve Data candle diagnostics.");
+        } else {
+          setTwelveDataError(data.message || data.error || "Failed to retrieve Twelve Data candle details.");
+        }
+      }
+    } catch (err: any) {
+      setTwelveDataCandle(null);
+      setTwelveDataError(err.message || "Network communication failure.");
+    } finally {
+      setTwelveDataLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (detectedSymbol && detectedTimeframe) {
+      fetchTwelveDataCandle(detectedSymbol, detectedTimeframe);
+    } else {
+      setTwelveDataCandle(null);
+      setTwelveDataError(null);
+    }
+  }, [detectedSymbol, detectedTimeframe]);
 
   // Option A & C API Rotation State Hooks
   const [showApiSettings, setShowApiSettings] = useState<boolean>(false);
@@ -1564,7 +1613,9 @@ Return your findings in the requested JSON structure. No markdown formatting.`
   };
 
   const handleAnalyzeChart = async () => {
-    if (!uploadedImage || isAnalyzing) return;
+    const isLive = analysisMode === "live";
+    const imageToUse = isLive ? DUMMY_BLACK_PNG : uploadedImage;
+    if (!imageToUse || isAnalyzing) return;
     if (!detectedSymbol || !detectedTimeframe) {
       alert("Please select both a Trading Pair and a Timeframe before executing analysis.");
       return;
@@ -1592,6 +1643,11 @@ And the active chart details parsed from the visual data.`;
 - The user has uploaded a local chart screenshot of ${detectedSymbol} on the ${detectedTimeframe} timeframe.
 - The interactive live TradingView chart has been cross-referenced at the higher ${getHigherTimeframeDetails(detectedTimeframe).label} timeframe level to evaluate the larger macro market trend and key structural supply & demand points.
 - Core Action: Analyze the local candlestick patterns, support/resistance structure, or indicator values from the uploaded screenshot. Then combine this with the broader market trend, support zones, and liquidity structures characteristic of the higher ${getHigherTimeframeDetails(detectedTimeframe).label} timeframe. Your final decision must incorporate multi-timeframe confirmation (e.g. check if the local entry is aligned with the major HTF trend).`;
+      }
+
+      if (isLive) {
+        compositePrompt += `\n\n[Live Market Analysis Mode - No User Screenshot Uploaded]:
+- Note: This is an automated Live Market Analysis run. No user screenshot features are available, so please focus your analysis on standard market structures, order flow, higher timeframe trends, and strategic guidelines for ${detectedSymbol} on the ${detectedTimeframe} timeframe, rather than identifying local screenshot geometries. Apply all required guidelines, risk gates, setup grades, and "NO TRADE" checks.`;
       }
 
       compositePrompt += `\n\nAnalyze this situation and return a cohesive and structured recommendation in strict, valid JSON format.
@@ -1631,11 +1687,13 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            image: uploadedImage,
+            image: imageToUse,
             strategy: compositePrompt,
             userApiKey: userGeminiKey,
             symbol: detectedSymbol,
-            timeframe: detectedTimeframe
+            timeframe: detectedTimeframe,
+            isLive,
+            twelveDataCandle
           }),
           signal: controller.signal
         });
@@ -1677,22 +1735,169 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
           );
         }
 
-        const match = uploadedImage.match(/^data:([^;]+);base64,(.+)$/);
-        if (!match) {
-          throw new Error("Invalid image format received.");
+        let mimeType = "";
+        let base64Data = "";
+        if (!isLive) {
+          const match = imageToUse.match(/^data:([^;]+);base64,(.+)$/);
+          if (!match) {
+            throw new Error("Invalid image format received.");
+          }
+          mimeType = match[1];
+          base64Data = match[2];
         }
-
-        const mimeType = match[1];
-        const base64Data = match[2];
 
         setAnalysisLogs((prev) => [
           ...prev,
           "Bypassing offline server... Initiating direct high-stability browser API flow...",
           "Authorizing client-side Secure Handshake direct query...",
-          "Analyzing visual candle dynamics and strategy rules directly via Gemini..."
+          isLive 
+            ? "Analyzing Twelve Data OHLC candle metrics directly via Gemini..." 
+            : "Analyzing visual candle dynamics and strategy rules directly via Gemini..."
         ]);
 
-        const fullPrompt = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
+        let fullPrompt = "";
+        if (isLive && twelveDataCandle) {
+          fullPrompt = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
+
+Core Rules - Live Market Analysis:
+- There is NO screenshot uploaded. Use the supplied Twelve Data market candle data below as your absolute source of truth.
+- Strictly follow the step-by-step process below.
+- Maintain analytical discipline and probabilistic thinking at all times.
+- Use precise, professional language. Avoid retail slang.
+- Before issuing any directional scenario, you MUST evaluate the overall quality of the setup by mathematically grading these six criteria from 0 to 100:
+  1. Market Structure Clarity
+  2. Liquidity Clarity
+  3. Timeframe Alignment
+  4. Institutional Confluence
+  5. Risk-to-Reward Quality
+  6. Entry Precision
+
+- STRICT CAPITAL PRESERVATION & "NO TRADE" POLICY:
+  If any of the following conditions exist:
+    * Conflicting timeframe bias
+    * Weak market structure
+    * Unclear liquidity targets
+    * Poor risk-to-reward ratio (below 1:2)
+    * Excessive volatility
+    * Choppy or ranging market conditions
+    * Missing institutional confluence
+    * Low confidence in chart interpretation (overall confidence score is below 60/100, unless exceptional confluence exists)
+  Then you MUST classify the setup as "NO TRADE". Do NOT force a bullish or bearish trade idea.
+  The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
+
+  When "NO TRADE" is triggered, you must:
+  1. Set the JSON "signal" attribute strictly to "NO TRADE" (it overrides BUY/SELL/HOLD).
+  2. Clearly state in the report why no trade should be taken.
+  3. Explain what conditions would improve the setup.
+  4. Identify key levels to monitor.
+  5. Describe what confirmation is required before considering any entry.
+
+Supplied Source of Truth Market Data:
+* Trading Pair: ${detectedSymbol || "Unknown"}
+* Selected Timeframe: ${detectedTimeframe || "Unknown"}
+* Twelve Data OHLC Candle Details:
+  - Open: ${twelveDataCandle.open}
+  - High: ${twelveDataCandle.high}
+  - Low: ${twelveDataCandle.low}
+  - Close: ${twelveDataCandle.close}
+  - Timestamp: ${twelveDataCandle.timestamp}
+  - Volume: ${twelveDataCandle.volume || 'N/A'}
+
+Analysis Process (Live Market Data Focus):
+- STEP 1: Verify Market Data Context
+  Acknowledge the Trading Pair and Timeframe and the Twelve Data OHLC candle details. Do not request any screenshots. Use these precise values as the reference point for your entire analysis.
+- STEP 2: Primary Institutional Analysis
+  Analyze based on standard market behavior & the current candle location:
+  * Overall trend direction and strength
+  * Market structure (HH/HL, LH/LL, or transitional)
+  * Key Support & Resistance levels (major and minor)
+  * Liquidity zones (equal highs/lows, stop hunts, previous day/week highs/lows)
+  * Fair Value Gaps (FVGs) / Imbalances
+  * Order blocks (bullish/bearish)
+  * Break of Structure (BOS) and Change of Character (CHOCH)
+  * Market Phase Detection & Volume Clues
+- STEP 3: Higher-Timeframe Context
+  Provide context from:
+  * One higher timeframe
+  * Two higher timeframes (e.g., check H4 & Daily if selected is H1)
+  * Evaluate Multi-Timeframe Context and dynamic trend alignment.
+- STEP 4: Scenario Development & Risk Management
+  Develop two clear trade scenarios:
+  * Bullish Scenario (if applicable):
+    - Confluence factors
+    - Preferred entry zone
+    - Stop Loss (with justification)
+    - Take Profit levels (minimum 2 levels with RR)
+    - Invalidation level
+  * Bearish Scenario (if applicable):
+    - Confluence factors
+    - Preferred entry zone
+    - Stop Loss (with justification)
+    - Take Profit levels (minimum 2 levels with RR)
+    - Invalidation level
+
+STEP 5: Final Output Requirements
+After completing all steps, deliver a structured professional report with the following sections in your "reason" field in valid Markdown format. Do NOT use any artificial word constraint!
+Give the complete detailed analysis with these sections:
+### 1. Chart Overview
+[Details of trading pair, timeframe, current twelve data closed candle price and context]
+
+### 2. Key Observations
+[Detailed trend, structure, order blocks, FVG, or liquidity zones identified]
+
+### 3. Setup Quality Matrix (0-100 grading)
+- Market Structure Clarity: [Grade]/100
+- Liquidity Clarity: [Grade]/100
+- Timeframe Alignment: [Grade]/100
+- Institutional Confluence: [Grade]/100
+- Risk-to-Reward Quality: [Grade]/100
+- Entry Precision: [Grade]/100
+- **Calculated Average Rating**: [Average Grade]/100
+
+### 4. Multi-Timeframe Analysis
+[Inter-timeframe trend alignment, momentum, and supply/demand interactions]
+
+### 5. Trade Strategy Setup (Bullish/Bearish Scenarios)
+*Only if actionable. If "NO TRADE" is determined, substitute this section with a comprehensive explanation of why the trade is skipped, what conditions would improve the setup, identify key invalidation lines to monitor, and describe what confirmation is requested.*
+
+### 6. Overall Market Bias
+[The concluded directional outlook - BUY, SELL, or NO TRADE]
+
+### 7. Confidence Score & Justification
+[Numerical score (0-100) with hedge-fund grade rationale]
+
+### 8. Risk Management & Capital Preservation Note
+[Recommended position size considerations, preservation rules, and capital safeguarding guidelines]
+
+Additional Guidelines:
+- Be objective. Clearly state when the setup is unclear or low-confluence.
+- Use proper risk-reward ratios (minimum 1:2 preferred for institutional grade setups).
+- Cite specific price levels accurately around the Twelve Data OHLC values.
+
+You MUST formulate the output as a valid JSON object matching the schema below:
+- "signal": State the concluded Overall Market Bias (strictly one of BUY, SELL, or "NO TRADE").
+- "level": Recommended trigger level, current market entry price, or "N/A" if NO TRADE.
+- "tp": Target peak profit level, multiple targets, or "N/A" if NO TRADE.
+- "sl": Stop-loss level or "N/A" if NO TRADE.
+- "confidence": Percentage score (e.g., "55%").
+- "reason": The complete multi-line Markdown structured professional report formatted matching STEP 5.
+
+STRICT MT5-COMPLIANT LEVEL RULES (CRITICAL):
+1. For BUY signal: "tp" MUST be mathematically higher than "level" (TP > level), and "sl" MUST be mathematically lower than "level" (SL < level).
+2. For SELL signal: "tp" MUST be mathematically lower than "level" (TP < level), and "sl" MUST be mathematically higher than "level" (SL > level).
+3. MINIMUM STOP DISTANCE: S/L and T/P levels must be placed at least 15 pips (150 points) away from the entry "level" to prevent failing MetaTrader broker internal "Stop Level" checks (which reject tight prices as "Invalid S/L or T/P").
+4. COHERENT DECIMAL PRECISION: Round all price values ("level", "tp", "sl") to match standard MT5 contract digits depending on asset class:
+   - Standard Forex (EURUSD, GBPUSD, AUDUSD, etc.): Exactly 5 decimal places (e.g., 1.08250)
+   - JPY Forex Pairs (USDJPY, EURJPY, etc.): Exactly 3 decimal places (e.g., 156.420)
+   - Crypto Pairs (BTCUSD, ETHUSD): Exactly 2 decimal places (e.g., 68450.50)
+   - Indices/Commodities (Gold, US30, GER40): Exactly 2 decimal places (e.g., 2355.80, 39120.40)
+
+Supplied User Trade Logic Guidelines & Strategy context:
+"""
+${compositePrompt}
+"""`;
+        } else {
+          fullPrompt = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
 
 Core Rules:
 - Never give an immediate directional bias when a chart screenshot is uploaded.
@@ -1769,8 +1974,8 @@ STRICT MT5-COMPLIANT LEVEL RULES (CRITICAL):
 Supplied User Trade Logic Guidelines & Strategy context:
 """
 ${compositePrompt}
-"""
-`;
+"""`;
+        }
 
         const fallbackStartTime = Date.now();
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
@@ -1779,7 +1984,11 @@ ${compositePrompt}
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{
-              parts: [
+              parts: isLive ? [
+                {
+                  text: fullPrompt
+                }
+              ] : [
                 {
                   inlineData: {
                     mimeType,
@@ -1907,8 +2116,8 @@ ${compositePrompt}
 
       setAnalysisReport(finalReport);
       
-      if (uploadedImage) {
-        saveToHistory(uploadedImage, selectedStrategy, finalReport);
+      if (imageToUse) {
+        saveToHistory(imageToUse, selectedStrategy, finalReport);
       }
 
       // Refresh key health status
@@ -2549,6 +2758,7 @@ Risk Reminder: ${riskReminder}`;
       setSelectedStrategy(STRATEGIES_LIST[0]);
       setSelectedStrategyIndex(0);
       setIsSaved(true);
+      setAnalysisMode("live");
       setUploadedImage(null);
       setAnalysisReport(null);
       setAnalysisLogs([]);
@@ -2609,6 +2819,11 @@ Risk Reminder: ${riskReminder}`;
       />
     );
   }
+
+  const isLive = analysisMode === "live";
+  const isReady = isLive 
+    ? !!(detectedSymbol && detectedTimeframe) 
+    : !!(uploadedImage && detectedSymbol && detectedTimeframe);
 
   return (
     <div>
@@ -2788,113 +3003,162 @@ Risk Reminder: ${riskReminder}`;
             onChange={handleFileChange}
           />
 
-          {!uploadedImage ? (
-            <div
-              className={`upload-area ${isDragging ? "dragging" : ""}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={handleUploadAreaClick}
+          {/* Segmented Toggle for Analysis Mode */}
+          <div className="flex p-1 rounded-lg bg-neutral-900 border border-white/5 mb-5 max-w-md select-none">
+            <button
+              onClick={() => {
+                setAnalysisMode("live");
+                setUploadedImage(null);
+                setDetectedSymbol("");
+                setDetectedTimeframe("");
+                setSymbolSearchQuery("");
+                setAnalysisReport(null);
+              }}
+              style={{
+                backgroundColor: analysisMode === "live" ? "rgba(255, 255, 255, 0.08)" : "transparent",
+              }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold font-sans tracking-wide transition-all border ${
+                analysisMode === "live"
+                  ? "text-white border-white/10 shadow-sm"
+                  : "text-white/40 border-transparent hover:text-white/60"
+              }`}
             >
-              <div className="icon-box">
-                <i className="ph ph-upload-simple" style={{ fontSize: "2.2rem", color: "#888" }} />
+              <i className="ph ph-chart-line text-[15px]" />
+              Live Market Analysis
+            </button>
+            <button
+              onClick={() => {
+                setAnalysisMode("screenshot");
+                setUploadedImage(null);
+                setDetectedSymbol("");
+                setDetectedTimeframe("");
+                setSymbolSearchQuery("");
+                setAnalysisReport(null);
+              }}
+              style={{
+                backgroundColor: analysisMode === "screenshot" ? "rgba(255, 255, 255, 0.08)" : "transparent",
+              }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold font-sans tracking-wide transition-all border ${
+                analysisMode === "screenshot"
+                  ? "text-white border-white/10 shadow-sm"
+                  : "text-white/40 border-transparent hover:text-white/60"
+              }`}
+            >
+              <i className="ph ph-camera text-[15px]" />
+              Screenshot Analysis
+            </button>
+          </div>
+
+          {analysisMode === "screenshot" ? (
+            // ================== SCREENSHOT ANALYSIS MODE ==================
+            !uploadedImage ? (
+              <div
+                className={`upload-area ${isDragging ? "dragging" : ""}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={handleUploadAreaClick}
+              >
+                <div className="icon-box">
+                  <i className="ph ph-upload-simple" style={{ fontSize: "2.2rem", color: "#888" }} />
+                </div>
+                <p style={{ margin: "5px 0", fontWeight: "500" }}>Upload Chart Screenshot</p>
+                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                  PNG, JPG or WebP · Max 10MB
+                </span>
               </div>
-              <p style={{ margin: "5px 0", fontWeight: "500" }}>Upload Chart Screenshot</p>
-              <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                PNG, JPG or WebP · Max 10MB
-              </span>
-            </div>
-          ) : (
-            <>
-              {/* Main Workspace: Screenshot and TradingView side-by-side / stacked responsive */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {/* Left Column: Uploaded Screenshot card */}
-                <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] flex flex-col h-[340px] relative">
-                  <div className="flex justify-between items-center mb-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-white/80 font-sans">
-                        Uploaded Screenshot
-                      </span>
-                    </div>
-                    <button
-                      className="text-white/40 hover:text-white transition-colors p-1"
-                      onClick={handleRemoveImage}
-                      title="Remove Image"
-                    >
-                      <i className="ph ph-trash text-sm" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-hidden relative flex items-center justify-center bg-white/5 rounded-lg border border-white/10 group">
-                    <img
-                      src={uploadedImage}
-                      alt="Uploaded chart screenshot"
-                      className="max-h-full max-w-full rounded-md object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-
-                    {/* OPTION C: Visual overlays on top of the analyzed screenshot */}
-                    {analysisReport && showAIOverlay && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
-                      <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 bg-gradient-to-b from-black/40 via-transparent to-black/40 animate-fadeIn select-none">
-                        {analysisReport.signal === "BUY" ? (
-                          <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
-                            {/* Target Take Profit Zone (High contrast White) */}
-                            <div className="h-[35%] w-full bg-white/10 border-b border-dashed border-white/30 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 top-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
-                                TAKE PROFIT (TP): {analysisReport.tp}
-                              </span>
-                              <span className="absolute right-2 top-2 text-[8px] font-mono text-white/50 uppercase tracking-widest">Reward Zone</span>
-                            </div>
-
-                            {/* Entry Level Line (Medium contrast Gray) */}
-                            <div className="h-[30%] w-full border-b border-dashed border-white/20 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 -translate-y-1/2 bg-[#0F0F0F] text-white border border-white/20 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
-                                ESTIMATED ENTRY: {analysisReport.level}
-                              </span>
-                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-white/40 uppercase tracking-widest">Trigger Level</span>
-                            </div>
-
-                            {/* Risk Stop Loss Zone (Muted Gray / Low Opacity) */}
-                            <div className="h-[35%] w-full bg-white/5 flex items-end justify-between px-4 pb-4 relative">
-                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-white/15" />
-                              <span className="absolute left-2 bottom-2 bg-[#0F0F0F] text-white/60 border border-white/10 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded tracking-wider">
-                                STOP LOSS (SL): {analysisReport.sl}
-                              </span>
-                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-white/30 uppercase tracking-widest">Risk Area</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
-                            {/* Risk Stop Loss Zone at the Top for SELL (Muted Gray / Low Opacity) */}
-                            <div className="h-[35%] w-full bg-white/5 border-b border-dashed border-white/15 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 top-2 bg-[#0F0F0F] text-white/60 border border-white/10 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded tracking-wider">
-                                STOP LOSS (SL): {analysisReport.sl}
-                              </span>
-                              <span className="absolute right-2 top-2 text-[8px] font-mono text-white/30 uppercase tracking-widest">Risk Area</span>
-                            </div>
-
-                            {/* Entry Level Line (Medium contrast Gray) */}
-                            <div className="h-[30%] w-full border-b border-dashed border-white/20 flex items-center justify-between px-4 relative">
-                              <span className="absolute left-2 -translate-y-1/2 bg-[#0F0F0F] text-white border border-white/20 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
-                                ESTIMATED ENTRY: {analysisReport.level}
-                              </span>
-                              <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-white/40 uppercase tracking-widest">Trigger Level</span>
-                            </div>
-
-                            {/* Target Take Profit Zone at the Bottom for SELL (High contrast White) */}
-                            <div className="h-[35%] w-full bg-white/10 flex items-end justify-between px-4 pb-4 relative">
-                              <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-white/30" />
-                              <span className="absolute left-2 bottom-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
-                                TAKE PROFIT (TP): {analysisReport.tp}
-                              </span>
-                              <span className="absolute right-2 bottom-2 text-[8px] font-mono text-white/50 uppercase tracking-widest">Reward Zone</span>
-                            </div>
-                          </div>
-                        )}
+            ) : (
+              <>
+                {/* Main Workspace: Screenshot and TradingView side-by-side / stacked responsive */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  {/* Left Column: Uploaded Screenshot card */}
+                  <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] flex flex-col h-[340px] relative">
+                    <div className="flex justify-between items-center mb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-white/80 font-sans">
+                          Uploaded Screenshot
+                        </span>
                       </div>
-                    )}
+                      <button
+                        className="text-white/40 hover:text-white transition-colors p-1"
+                        onClick={handleRemoveImage}
+                        title="Remove Image"
+                      >
+                        <i className="ph ph-trash text-sm" />
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-hidden relative flex items-center justify-center bg-white/5 rounded-lg border border-white/10 group">
+                      <img
+                        src={uploadedImage}
+                        alt="Uploaded chart screenshot"
+                        className="max-h-full max-w-full rounded-md object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+
+                      {/* OPTION C: Visual overlays on top of the analyzed screenshot */}
+                      {analysisReport && showAIOverlay && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
+                        <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 bg-gradient-to-b from-black/40 via-transparent to-black/40 animate-fadeIn select-none">
+                          {analysisReport.signal === "BUY" ? (
+                            <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
+                              {/* Target Take Profit Zone (High contrast White) */}
+                              <div className="h-[35%] w-full bg-white/10 border-b border-dashed border-white/30 flex items-center justify-between px-4 relative">
+                                <span className="absolute left-2 top-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
+                                  TAKE PROFIT (TP): {analysisReport.tp}
+                                </span>
+                                <span className="absolute right-2 top-2 text-[8px] font-mono text-white/50 uppercase tracking-widest">Reward Zone</span>
+                              </div>
+
+                              {/* Entry Level Line (Medium contrast Gray) */}
+                              <div className="h-[30%] w-full border-b border-dashed border-white/20 flex items-center justify-between px-4 relative">
+                                <span className="absolute left-2 -translate-y-1/2 bg-[#0F0F0F] text-white border border-white/20 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                                  ESTIMATED ENTRY: {analysisReport.level}
+                                </span>
+                                <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-white/40 uppercase tracking-widest">Trigger Level</span>
+                              </div>
+
+                              {/* Risk Stop Loss Zone (Muted Gray / Low Opacity) */}
+                              <div className="h-[35%] w-full bg-white/5 flex items-end justify-between px-4 pb-4 relative">
+                                <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-white/15" />
+                                <span className="absolute left-2 bottom-2 bg-[#0F0F0F] text-white/60 border border-white/10 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded tracking-wider">
+                                  STOP LOSS (SL): {analysisReport.sl}
+                                </span>
+                                <span className="absolute right-2 bottom-2 text-[8px] font-mono text-white/30 uppercase tracking-widest">Risk Area</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
+                              {/* Risk Stop Loss Zone at the Top for SELL (Muted Gray / Low Opacity) */}
+                              <div className="h-[35%] w-full bg-white/5 border-b border-dashed border-white/15 flex items-center justify-between px-4 relative">
+                                <span className="absolute left-2 top-2 bg-[#0F0F0F] text-white/60 border border-white/10 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded tracking-wider">
+                                  STOP LOSS (SL): {analysisReport.sl}
+                                </span>
+                                <span className="absolute right-2 top-2 text-[8px] font-mono text-white/30 uppercase tracking-widest">Risk Area</span>
+                              </div>
+
+                              {/* Entry Level Line (Medium contrast Gray) */}
+                              <div className="h-[30%] w-full border-b border-dashed border-white/20 flex items-center justify-between px-4 relative">
+                                <span className="absolute left-2 -translate-y-1/2 bg-[#0F0F0F] text-white border border-white/20 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider">
+                                  ESTIMATED ENTRY: {analysisReport.level}
+                                </span>
+                                <span className="absolute right-2 -translate-y-1/2 text-[8px] font-mono text-white/40 uppercase tracking-widest">Trigger Level</span>
+                              </div>
+
+                              {/* Target Take Profit Zone at the Bottom for SELL (High contrast White) */}
+                              <div className="h-[35%] w-full bg-white/10 flex items-end justify-between px-4 pb-4 relative">
+                                <div className="absolute inset-x-0 bottom-0 h-[1px] border-b border-dashed border-white/30" />
+                                <span className="absolute left-2 bottom-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
+                                  TAKE PROFIT (TP): {analysisReport.tp}
+                                </span>
+                                <span className="absolute right-2 bottom-2 text-[8px] font-mono text-white/50 uppercase tracking-widest">Reward Zone</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Toggle overlay controller */}
                     {analysisReport && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
@@ -2911,7 +3175,6 @@ Risk Reminder: ${riskReminder}`;
                       </button>
                     )}
                   </div>
-                </div>
 
                 {/* Right Column: Interactive TradingView Chart (Bigger Picture Context) */}
                 <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] flex flex-col h-[340px] relative">
@@ -3071,9 +3334,301 @@ Risk Reminder: ${riskReminder}`;
                   <div className="flex flex-col">
                     <label className="text-[10px] text-white/50 font-bold uppercase tracking-wide mb-1.5 font-mono flex items-center justify-between">
                       <span>Timeframe <span className="text-white/40">*</span></span>
-                      {detectedTimeframe && (
-                        <span className="text-[9px] text-white font-black uppercase tracking-widest">Locked ✓</span>
+                    </label>
+                    <select
+                      value={detectedTimeframe}
+                      onChange={(e) => setDetectedTimeframe(e.target.value)}
+                      className="bg-white/5 border border-white/10 focus:border-white text-white text-xs px-3 py-2.5 rounded-lg w-full font-mono outline-none transition-all cursor-pointer focus:bg-white/10"
+                    >
+                      <option value="" disabled>Select Core Timeframe...</option>
+                      {TIMEFRAMES.map((tf) => (
+                        <option key={tf.value} value={tf.value}>
+                          {tf.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Background click-away helper to close dropdown */}
+                {isSymbolDropdownOpen && (
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setIsSymbolDropdownOpen(false)}
+                  />
+                )}
+              </div>
+            </>
+          )
+          ) : (
+            // ================== LIVE MARKET ANALYSIS MODE ==================
+            <>
+              {/* Live Interactive Workspace Chart */}
+              <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] flex flex-col h-[380px] relative mb-4">
+                <div className="flex justify-between items-center mb-2.5">
+                  <div className="flex items-center gap-2 font-sans">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-white/80">
+                      Live Interactive Workspace Chart
+                    </span>
+                    {detectedSymbol && detectedTimeframe && (
+                      <span className="text-[10px] bg-white/10 text-white border border-white/10 px-1.5 py-0.5 rounded font-mono font-bold uppercase">
+                        {detectedSymbol} · {detectedTimeframe}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-hidden rounded-lg border border-white/10 bg-[#0F0F0F] relative">
+                  {!detectedSymbol || !detectedTimeframe ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center select-none bg-[#0F0F0F]">
+                      <i className="ph ph-chart-line text-white/30 text-3xl mb-2.5 animate-pulse" />
+                      <p className="text-xs font-semibold text-white/80 font-sans mb-1">Live Chart Locked</p>
+                      <p className="text-[10px] text-white/50 font-mono max-w-[240px]">
+                        Select a Trading Pair and Timeframe below to unlock the real-time chart.
+                      </p>
+                    </div>
+                  ) : (
+                    <iframe
+                      id="tradingview_chart_iframe_live"
+                      title="TradingView Live Chart"
+                      src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(getTradingViewTicker(detectedSymbol))}&interval=${detectedTimeframe === "Daily" ? "D" : detectedTimeframe === "Weekly" ? "W" : detectedTimeframe === "Monthly" ? "M" : detectedTimeframe.replace("M", "")}&theme=dark&style=1&timezone=Etc%2FUTC`}
+                      style={{ width: "100%", height: "100%", border: "none" }}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Twelve Data OHLC Diagnostics Panel */}
+              {detectedSymbol && detectedTimeframe && (
+                <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] mb-4 relative overflow-hidden">
+                  <div className="flex justify-between items-center pb-2.5 mb-3 border-b border-white/5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/70 font-mono">
+                        Twelve Data OHLC Candlestick Diagnostics
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => fetchTwelveDataCandle(detectedSymbol, detectedTimeframe)}
+                      disabled={twelveDataLoading}
+                      className="text-[9px] font-mono text-white/50 hover:text-white flex items-center gap-1 bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded px-2 py-1 select-none"
+                    >
+                      <i className={`ph ph-arrows-counter-clockwise text-[10px] ${twelveDataLoading ? "animate-spin" : ""}`} />
+                      <span>{twelveDataLoading ? "FETCHING..." : "REFRESH"}</span>
+                    </button>
+                  </div>
+
+                  {twelveDataLoading ? (
+                    <div className="py-8 flex flex-col items-center justify-center gap-2">
+                      <div className="w-5 h-5 rounded-full border-2 border-white/10 border-t-emerald-500 animate-spin" />
+                      <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest animate-pulse">
+                        Querying Twelve Data API...
+                      </span>
+                    </div>
+                  ) : twelveDataError ? (
+                    <div className="p-3 border border-red-500/10 bg-red-500/5 rounded-lg flex items-start gap-2.5">
+                      <i className="ph ph-warning-octagon text-sm text-red-500/80 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="text-[10px] font-bold text-red-400 font-mono uppercase tracking-wider mb-1">
+                          Data Retrieval Error
+                        </div>
+                        <p className="text-[10px] text-white/60 font-mono leading-normal">
+                          {twelveDataError}
+                        </p>
+                      </div>
+                    </div>
+                  ) : twelveDataCandle ? (
+                    <div>
+                      {/* Grid containing the values */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
+                        {/* Open */}
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
+                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">OPEN</span>
+                          <span className="text-xs font-mono font-bold text-white/90">
+                            {formatPrice(detectedSymbol, twelveDataCandle.open)}
+                          </span>
+                        </div>
+
+                        {/* High */}
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
+                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">HIGH</span>
+                          <span className="text-xs font-mono font-bold text-emerald-400">
+                            {formatPrice(detectedSymbol, twelveDataCandle.high)}
+                          </span>
+                        </div>
+
+                        {/* Low */}
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
+                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">LOW</span>
+                          <span className="text-xs font-mono font-bold text-rose-400">
+                            {formatPrice(detectedSymbol, twelveDataCandle.low)}
+                          </span>
+                        </div>
+
+                        {/* Close */}
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
+                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">CLOSE</span>
+                          <span className="text-xs font-mono font-bold text-white/90">
+                            {formatPrice(detectedSymbol, twelveDataCandle.close)}
+                          </span>
+                        </div>
+
+                        {/* Calculated Change / Direction */}
+                        <div className={`col-span-2 sm:col-span-1 p-2 rounded-lg border text-center flex flex-col justify-center ${
+                          twelveDataCandle.close >= twelveDataCandle.open
+                            ? "bg-emerald-500/5 border-emerald-500/10 text-emerald-400"
+                            : "bg-rose-500/5 border-rose-500/10 text-rose-400"
+                        }`}>
+                          <span className="text-[9px] font-bold uppercase tracking-wider font-mono block mb-1 opacity-60">DIRECTION</span>
+                          <span className="text-xs font-mono font-black uppercase flex items-center justify-center gap-1">
+                            <i className={`ph ph-arrow-${twelveDataCandle.close >= twelveDataCandle.open ? "up" : "down"}-bold`} />
+                            {twelveDataCandle.close >= twelveDataCandle.open ? "BULLISH" : "BEARISH"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Footer Metadata */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[9px] text-white/30 font-mono pt-2 border-t border-white/5">
+                        <span>INSTRUMENT: <strong className="text-white/50">{detectedSymbol}</strong></span>
+                        <span>BAR TIMEFRAME: <strong className="text-white/50">{detectedTimeframe}</strong></span>
+                        {twelveDataCandle.volume !== undefined && (
+                          <span>VOLUME: <strong className="text-white/50">{twelveDataCandle.volume.toLocaleString()}</strong></span>
+                        )}
+                        <span>CANDLE TIME: <strong className="text-white/50">{twelveDataCandle.timestamp}</strong></span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 text-center text-[10px] text-white/30 font-mono">
+                      No candle data loaded. Select another pair or timeframe to retry.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Required Analysis Metadata Settings Panel */}
+              <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] mb-4 flex flex-col gap-4 relative">
+                <div className="flex items-center gap-2 pb-2.5 border-b border-white/10">
+                  <i className="ph ph-sliders text-white text-base" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/80">
+                    Required Analysis Metadata Settings
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Searchable Trading Pair Selector */}
+                  <div className="flex flex-col relative">
+                    <label className="text-[10px] text-white/50 font-bold uppercase tracking-wide mb-1.5 font-mono flex items-center justify-between">
+                      <span>Trading Pair <span className="text-white/40">*</span></span>
+                      {detectedSymbol && (
+                        <span className="text-[9px] text-white font-black uppercase tracking-widest font-mono">Selected ✓</span>
                       )}
+                    </label>
+                    <div className="relative">
+                      <div className="relative flex items-center">
+                        <i className="ph ph-magnifying-glass absolute left-3 text-white/40 text-xs pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Search or enter pair (e.g. EURUSD)"
+                          value={symbolSearchQuery}
+                          onFocus={() => setIsSymbolDropdownOpen(true)}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase();
+                            setSymbolSearchQuery(val);
+                            setDetectedSymbol(val);
+                            setIsSymbolDropdownOpen(true);
+                          }}
+                          className="bg-white/5 border border-white/10 focus:border-white text-white text-xs pl-8 pr-8 py-2.5 rounded-lg w-full font-mono outline-none transition-all placeholder:text-white/30 focus:bg-white/10"
+                        />
+                        {detectedSymbol && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetectedSymbol("");
+                              setSymbolSearchQuery("");
+                            }}
+                            className="absolute right-3 text-neutral-500 hover:text-white transition-colors"
+                          >
+                            <i className="ph ph-x-circle text-sm" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Search results dropdown listing */}
+                      {isSymbolDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-[#0F0F0F] border border-white/15 rounded-lg shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-white/5 font-mono">
+                          {/* Option to use custom entry if not exactly matched */}
+                          {symbolSearchQuery.trim() && !COMMON_PAIRS.some(p => p.symbol === symbolSearchQuery.trim()) && (
+                            <div 
+                              className="p-2 text-xs hover:bg-white/5 cursor-pointer text-white flex items-center gap-1.5"
+                              onClick={() => {
+                                setDetectedSymbol(symbolSearchQuery.trim());
+                                setIsSymbolDropdownOpen(false);
+                              }}
+                            >
+                              <i className="ph ph-plus-circle text-xs" />
+                              <span>Use custom: "{symbolSearchQuery.trim()}"</span>
+                            </div>
+                          )}
+
+                          {/* Group by category */}
+                          {["Forex", "Crypto", "Commodities", "Indices"].map((category) => {
+                            const filtered = COMMON_PAIRS.filter(
+                              (p) =>
+                                p.category === category &&
+                                (symbolSearchQuery === "" ||
+                                  p.symbol.toLowerCase().includes(symbolSearchQuery.toLowerCase()) ||
+                                  p.label.toLowerCase().includes(symbolSearchQuery.toLowerCase()))
+                            );
+
+                            if (filtered.length === 0) return null;
+
+                            return (
+                              <div key={category} className="p-1 px-1.5">
+                                <div className="text-[9px] text-white/40 font-bold uppercase tracking-wider px-2 py-1">
+                                  {category}
+                                </div>
+                                <div className="space-y-0.5">
+                                  {filtered.map((item) => (
+                                    <div
+                                      key={item.symbol}
+                                      onClick={() => {
+                                        setDetectedSymbol(item.symbol);
+                                        setSymbolSearchQuery(item.symbol);
+                                        setIsSymbolDropdownOpen(false);
+                                      }}
+                                      className={`p-2 rounded text-xs select-none cursor-pointer flex items-center justify-between ${
+                                        detectedSymbol === item.symbol
+                                          ? "bg-white/10 text-white font-semibold"
+                                          : "text-white/60 hover:bg-white/5 hover:text-white"
+                                      }`}
+                                    >
+                                      <span>{item.label}</span>
+                                      {detectedSymbol === item.symbol && <i className="ph ph-check text-[10px]" />}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {symbolSearchQuery && COMMON_PAIRS.filter(p => 
+                            p.symbol.toLowerCase().includes(symbolSearchQuery.toLowerCase()) ||
+                            p.label.toLowerCase().includes(symbolSearchQuery.toLowerCase())
+                          ).length === 0 && (
+                            <div className="p-3 text-center text-xs text-white/30">
+                              No matching standards found.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Required Timeframe Selector */}
+                  <div className="flex flex-col">
+                    <label className="text-[10px] text-white/50 font-bold uppercase tracking-wide mb-1.5 font-mono flex items-center justify-between">
+                      <span>Timeframe <span className="text-white/40">*</span></span>
                     </label>
                     <select
                       value={detectedTimeframe}
@@ -3772,7 +4327,7 @@ Risk Reminder: ${riskReminder}`;
           )}
 
           {/* Validation Warning Alert banner */}
-          {uploadedImage && (!detectedSymbol || !detectedTimeframe) && (
+          {((!isLive && uploadedImage) || isLive) && (!detectedSymbol || !detectedTimeframe) && (
             <div className="p-3 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-400 text-xs flex items-start gap-2.5 animate-fadeIn font-sans select-none">
               <i className="ph ph-warning-octagon text-lg text-amber-500/80 mt-0.5" />
               <div>
@@ -3786,21 +4341,21 @@ Risk Reminder: ${riskReminder}`;
             className="btn-full flex items-center justify-center gap-2 animate-fadeIn"
             style={{
               background:
-                uploadedImage && detectedSymbol && detectedTimeframe && !isAnalyzing
+                isReady && !isAnalyzing
                   ? "linear-gradient(135deg, #1b5e20, #004d40)"
                   : "#1a1a1a",
               borderColor:
-                uploadedImage && detectedSymbol && detectedTimeframe && !isAnalyzing
+                isReady && !isAnalyzing
                   ? "#004d40"
                   : "#252525",
               color:
-                uploadedImage && detectedSymbol && detectedTimeframe && !isAnalyzing
+                isReady && !isAnalyzing
                   ? "#ffffff"
                   : "#555555",
-              cursor: uploadedImage && detectedSymbol && detectedTimeframe && !isAnalyzing ? "pointer" : "not-allowed"
+              cursor: isReady && !isAnalyzing ? "pointer" : "not-allowed"
             }}
             onClick={handleAnalyzeChart}
-            disabled={!uploadedImage || !detectedSymbol || !detectedTimeframe || isAnalyzing}
+            disabled={!isReady || isAnalyzing}
           >
             {isAnalyzing ? (
               <>

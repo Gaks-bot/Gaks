@@ -285,6 +285,132 @@ async function startServer() {
     }
   });
 
+  // Proxy endpoint to fetch current candle data from Twelve Data securely
+  app.post("/api/twelve-data-ohlc", async (req, res) => {
+    const { symbol, timeframe } = req.body;
+
+    if (!symbol) {
+      return res.status(400).json({ error: "Missing required parameter 'symbol'." });
+    }
+    if (!timeframe) {
+      return res.status(400).json({ error: "Missing required parameter 'timeframe'." });
+    }
+
+    // Retrieve twelve data api key from environment
+    const apiKey = process.env.TWELVEDATA_API_KEY || process.env.TWELVE_DATA_API_KEY;
+
+    if (!apiKey || apiKey.trim() === "") {
+      return res.status(400).json({
+        error: "TWELVEDATA_API_KEY_MISSING",
+        message: "Twelve Data API Key is not configured on the server. Please define 'TWELVEDATA_API_KEY' in your environment secrets to unlock live Twelve Data candle diagnostics."
+      });
+    }
+
+    // Function to map symbol to Twelve Data standard
+    const mapToTwelveDataSymbol = (sym: string): string => {
+      const s = sym.trim().toUpperCase();
+      // Crypto
+      if (s === "BTCUSD" || s === "BTC/USD") return "BTC/USD";
+      if (s === "ETHUSD" || s === "ETH/USD") return "ETH/USD";
+      if (s === "SOLUSD" || s === "SOL/USD") return "SOL/USD";
+      if (s === "XRPUSD" || s === "XRP/USD") return "XRP/USD";
+      if (s === "ADAUSD" || s === "ADA/USD") return "ADA/USD";
+      
+      // Forex
+      if (s === "EURUSD" || s === "EUR/USD") return "EUR/USD";
+      if (s === "GBPUSD" || s === "GBP/USD") return "GBP/USD";
+      if (s === "USDJPY" || s === "USD/JPY") return "USD/JPY";
+      if (s === "USDCHF" || s === "USD/CHF") return "USD/CHF";
+      if (s === "AUDUSD" || s === "AUD/USD") return "AUD/USD";
+      if (s === "USDCAD" || s === "USD/CAD") return "USD/CAD";
+      if (s === "EURGBP" || s === "EUR/GBP") return "EUR/GBP";
+      if (s === "GBPJPY" || s === "GBP/JPY") return "GBP/JPY";
+      if (s === "NZDUSD" || s === "NZD/USD") return "NZD/USD";
+
+      // Commodities
+      if (s === "XAUUSD" || s === "XAU/USD") return "XAU/USD";
+      if (s === "XAGUSD" || s === "XAG/USD") return "XAG/USD";
+
+      // Indices
+      if (s === "SPX500") return "SPX";
+      if (s === "NAS100") return "NDX";
+      if (s === "US30") return "DJI";
+      if (s === "GER30" || s === "GERMAN30" || s === "DE30") return "DAX";
+      if (s === "UK100") return "FTSE";
+
+      // Standard split
+      if (s.length === 6 && !s.includes("/")) {
+        return s.slice(0, 3) + "/" + s.slice(3);
+      }
+      return s;
+    };
+
+    // Function to map timeframe to Twelve Data standard
+    const mapToTwelveDataTimeframe = (tf: string): string => {
+      const t = tf.trim();
+      if (t === "M1") return "1min";
+      if (t === "M5") return "5min";
+      if (t === "M15") return "15min";
+      if (t === "M30") return "30min";
+      if (t === "H1") return "1h";
+      if (t === "H4") return "4h";
+      if (t === "Daily" || t === "D") return "1day";
+      if (t === "Weekly" || t === "W") return "1week";
+      if (t === "Monthly" || t === "M") return "1month";
+      return "1day";
+    };
+
+    const resolvedSymbol = mapToTwelveDataSymbol(symbol);
+    const resolvedInterval = mapToTwelveDataTimeframe(timeframe);
+
+    // Call Twelve Data time_series endpoint with size=2
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(resolvedSymbol)}&interval=${resolvedInterval}&apikey=${apiKey}&size=2`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Twelve Data response HTTP state: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status === "error" || !data.values || data.values.length === 0) {
+        return res.status(400).json({
+          error: "TWELVEDATA_API_ERROR",
+          message: data.message || `No data returned from Twelve Data for symbol ${resolvedSymbol} (${resolvedInterval}).`
+        });
+      }
+
+      // Latest candle is at index 0
+      const latestCandle = data.values[0];
+
+      return res.json({
+        status: "success",
+        symbol: resolvedSymbol,
+        interval: resolvedInterval,
+        candle: {
+          open: parseFloat(latestCandle.open),
+          high: parseFloat(latestCandle.high),
+          low: parseFloat(latestCandle.low),
+          close: parseFloat(latestCandle.close),
+          timestamp: latestCandle.datetime,
+          volume: latestCandle.volume ? parseFloat(latestCandle.volume) : 0
+        },
+        meta: {
+          twelveDataMeta: data.meta || null,
+          retrievedAt: new Date().toISOString()
+        }
+      });
+
+    } catch (e: any) {
+      console.error("[Twelve Data Proxy Error]:", e.message || e);
+      return res.status(500).json({
+        error: "TWELVEDATA_FETCH_FAILED",
+        message: `Failed to retrieve market data from Twelve Data: ${e.message || "Unknown communication state error."}`
+      });
+    }
+  });
+
   function generateHeuristicsAnalysis(symbol: string, strategy?: string, imageBase64?: string) {
     const cleanSymbol = (symbol || "EURUSD").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
     const seedStr = imageBase64 ? imageBase64.substring(50, Math.min(250, imageBase64.length)) : cleanSymbol;
@@ -985,7 +1111,7 @@ Return your findings in the requested JSON structure.`
 
   // Secure Server-side Gemini AI analysis route using @google/genai with Key Rotation
   app.post("/api/analyze-chart", async (req, res) => {
-    const { image, strategy, userApiKey, symbol, timeframe } = req.body;
+    const { image, strategy, userApiKey, symbol, timeframe, isLive, twelveDataCandle } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: "Missing image payload." });
@@ -1009,7 +1135,7 @@ Return your findings in the requested JSON structure.`
     const base64Data = match[2];
 
     const imageHash = crypto.createHash("sha256").update(base64Data).digest("hex");
-    const cacheKey = `${imageHash}_${strategy || ""}_${symbol || ""}_${timeframe || ""}`;
+    const cacheKey = `${isLive ? "live" : imageHash}_${strategy || ""}_${symbol || ""}_${timeframe || ""}`;
 
     if (analysisCache.has(cacheKey)) {
       console.log(`[Analysis Cache] High-fidelity match found for ${symbol || "unknown asset"} with identical strategy. Returning exact cached report.`);
@@ -1018,7 +1144,149 @@ Return your findings in the requested JSON structure.`
 
     try {
 
-      const promptString = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
+      let promptString = "";
+      if (isLive && twelveDataCandle) {
+        promptString = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
+
+Core Rules - Live Market Analysis:
+- There is NO screenshot uploaded. Use the supplied Twelve Data market candle data below as your absolute source of truth.
+- Strictly follow the step-by-step process below.
+- Maintain analytical discipline and probabilistic thinking at all times.
+- Use precise, professional language. Avoid retail slang.
+- Before issuing any directional scenario, you MUST evaluate the overall quality of the setup by mathematically grading these six criteria from 0 to 100:
+  1. Market Structure Clarity
+  2. Liquidity Clarity
+  3. Timeframe Alignment
+  4. Institutional Confluence
+  5. Risk-to-Reward Quality
+  6. Entry Precision
+
+- STRICT CAPITAL PRESERVATION & "NO TRADE" POLICY:
+  If any of the following conditions exist:
+    * Conflicting timeframe bias
+    * Weak market structure
+    * Unclear liquidity targets
+    * Poor risk-to-reward ratio (below 1:2)
+    * Excessive volatility
+    * Choppy or ranging market conditions
+    * Missing institutional confluence
+    * Low confidence in chart interpretation (overall confidence score is below 60/100, unless exceptional confluence exists)
+  Then you MUST classify the setup as "NO TRADE". Do NOT force a bullish or bearish trade idea.
+  The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
+
+  When "NO TRADE" is triggered, you must:
+    1. Set the JSON "signal" attribute strictly to "NO TRADE" (it overrides BUY/SELL/HOLD).
+    2. Clearly state in the report why no trade should be taken.
+    3. Explain what conditions would improve the setup.
+    4. Identify key levels to monitor.
+    5. Describe what confirmation is required before considering any entry.
+
+Supplied Source of Truth Market Data:
+* Trading Pair: ${symbol || "Unknown"}
+* Selected Timeframe: ${timeframe || "Unknown"}
+* Twelve Data OHLC Candle Details:
+  - Open: ${twelveDataCandle.open}
+  - High: ${twelveDataCandle.high}
+  - Low: ${twelveDataCandle.low}
+  - Close: ${twelveDataCandle.close}
+  - Timestamp: ${twelveDataCandle.timestamp}
+  - Volume: ${twelveDataCandle.volume || 'N/A'}
+
+Analysis Process (Live Market Data Focus):
+- STEP 1: Verify Market Data Context
+  Acknowledge the Trading Pair (${symbol || "Unknown"}) and Timeframe (${timeframe || "Unknown"}) and the Twelve Data OHLC candle details. Do not request any screenshots. Use these precise values as the reference point for your entire analysis.
+- STEP 2: Primary Institutional Analysis
+  Analyze based on standard market behavior & the current candle location:
+  * Overall trend direction and strength
+  * Market structure (HH/HL, LH/LL, or transitional)
+  * Key Support & Resistance levels (major and minor)
+  * Liquidity zones (equal highs/lows, stop hunts, previous day/week highs/lows)
+  * Fair Value Gaps (FVGs) / Imbalances
+  * Order blocks (bullish/bearish)
+  * Break of Structure (BOS) and Change of Character (CHOCH)
+  * Market Phase Detection & Volume Clues
+- STEP 3: Higher-Timeframe Context
+  Provide context from:
+  * One higher timeframe
+  * Two higher timeframes (e.g., check H4 & Daily if selected is H1)
+  * Evaluate Multi-Timeframe Context and dynamic trend alignment.
+- STEP 4: Scenario Development & Risk Management
+  Develop two clear trade scenarios:
+  * Bullish Scenario (if applicable):
+    - Confluence factors
+    - Preferred entry zone
+    - Stop Loss (with justification)
+    - Take Profit levels (minimum 2 levels with RR)
+    - Invalidation level
+  * Bearish Scenario (if applicable):
+    - Confluence factors
+    - Preferred entry zone
+    - Stop Loss (with justification)
+    - Take Profit levels (minimum 2 levels with RR)
+    - Invalidation level
+
+STEP 5: Final Output Requirements
+After completing all steps, deliver a structured professional report with the following sections in your "reason" field in valid Markdown format. Do NOT use any artificial word constraint!
+Give the complete detailed analysis with these sections:
+### 1. Chart Overview
+[Details of trading pair, timeframe, current twelve data closed candle price and context]
+
+### 2. Key Observations
+[Detailed trend, structure, order blocks, FVG, or liquidity zones identified]
+
+### 3. Setup Quality Matrix (0-100 grading)
+- Market Structure Clarity: [Grade]/100
+- Liquidity Clarity: [Grade]/100
+- Timeframe Alignment: [Grade]/100
+- Institutional Confluence: [Grade]/100
+- Risk-to-Reward Quality: [Grade]/100
+- Entry Precision: [Grade]/100
+- **Calculated Average Rating**: [Average Grade]/100
+
+### 4. Multi-Timeframe Analysis
+[Inter-timeframe trend alignment, momentum, and supply/demand interactions]
+
+### 5. Trade Strategy Setup (Bullish/Bearish Scenarios)
+*Only if actionable. If "NO TRADE" is determined, substitute this section with a comprehensive explanation of why the trade is skipped, what conditions would improve the setup, identify key invalidation lines to monitor, and describe what confirmation is requested.*
+
+### 6. Overall Market Bias
+[The concluded directional outlook - BUY, SELL, or NO TRADE]
+
+### 7. Confidence Score & Justification
+[Numerical score (0-100) with hedge-fund grade rationale]
+
+### 8. Risk Management & Capital Preservation Note
+[Recommended position size considerations, preservation rules, and capital safeguarding guidelines]
+
+Additional Guidelines:
+- Be objective. Clearly state when the setup is unclear or low-confluence.
+- Use proper risk-reward ratios (minimum 1:2 preferred for institutional grade setups).
+- Cite specific price levels accurately around the Twelve Data OHLC values.
+
+You MUST formulate the output as a valid JSON object matching the schema below:
+- "signal": State the concluded Overall Market Bias (strictly one of BUY, SELL, or "NO TRADE").
+- "level": Recommended trigger level, current market entry price, or "N/A" if NO TRADE.
+- "tp": Target peak profit level, multiple targets, or "N/A" if NO TRADE.
+- "sl": Stop-loss level or "N/A" if NO TRADE.
+- "confidence": Percentage score (e.g., "55%").
+- "reason": The complete multi-line Markdown structured professional report formatted matching STEP 5.
+
+STRICT MT5-COMPLIANT LEVEL RULES (CRITICAL):
+1. For BUY signal: "tp" MUST be mathematically higher than "level" (TP > level), and "sl" MUST be mathematically lower than "level" (SL < level).
+2. For SELL signal: "tp" MUST be mathematically lower than "level" (TP < level), and "sl" MUST be mathematically higher than "level" (SL > level).
+3. MINIMUM STOP DISTANCE: S/L and T/P levels must be placed at least 15 pips (150 points) away from the entry "level" to prevent failing MetaTrader broker internal "Stop Level" checks (which reject tight prices as "Invalid S/L or T/P").
+4. COHERENT DECIMAL PRECISION: Round all price values ("level", "tp", "sl") to match standard MT5 contract digits depending on asset class:
+   - Standard Forex (EURUSD, GBPUSD, AUDUSD, etc.): Exactly 5 decimal places (e.g., 1.08250)
+   - JPY Forex Pairs (USDJPY, EURJPY, etc.): Exactly 3 decimal places (e.g., 156.420)
+   - Crypto Pairs (BTCUSD, ETHUSD): Exactly 2 decimal places (e.g., 68450.50)
+   - Indices/Commodities (Gold, US30, GER40): Exactly 2 decimal places (e.g., 2355.80, 39120.40)
+
+Supplied User Trade Logic Guidelines & Strategy context:
+"""
+${strategy || 'General Smart Money Concepts, Multi-Timeframe Alignment and Liquidity Sweeps.'}
+"""`;
+      } else {
+        promptString = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
 
 Core Rules:
 - Never give an immediate directional bias when a chart screenshot is uploaded.
@@ -1157,24 +1425,30 @@ STRICT MT5-COMPLIANT LEVEL RULES (CRITICAL):
 Supplied User Trade Logic Guidelines & Strategy context:
 """
 ${strategy || 'General Smart Money Concepts, Multi-Timeframe Alignment and Liquidity Sweeps.'}
-"""
-`;
+"""`;
+      }
 
       const rotationCall = await executeWithRotation(userApiKey, async (aiClient) => {
+        const parts = isLive ? [
+          {
+            text: promptString
+          }
+        ] : [
+          {
+            inlineData: {
+              mimeType,
+              data: base64Data
+            }
+          },
+          {
+            text: promptString
+          }
+        ];
+
         const response = await aiClient.models.generateContent({
           model: "gemini-3.5-flash",
           contents: {
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data: base64Data
-                }
-              },
-              {
-                text: promptString
-              }
-            ]
+            parts
           },
           config: {
             responseMimeType: "application/json",
