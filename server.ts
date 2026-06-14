@@ -285,132 +285,6 @@ async function startServer() {
     }
   });
 
-  // Proxy endpoint to fetch current candle data from Twelve Data securely
-  app.post("/api/twelve-data-ohlc", async (req, res) => {
-    const { symbol, timeframe } = req.body;
-
-    if (!symbol) {
-      return res.status(400).json({ error: "Missing required parameter 'symbol'." });
-    }
-    if (!timeframe) {
-      return res.status(400).json({ error: "Missing required parameter 'timeframe'." });
-    }
-
-    // Retrieve twelve data api key from environment
-    const apiKey = process.env.TWELVEDATA_API_KEY || process.env.TWELVE_DATA_API_KEY;
-
-    if (!apiKey || apiKey.trim() === "") {
-      return res.status(400).json({
-        error: "TWELVEDATA_API_KEY_MISSING",
-        message: "Twelve Data API Key is not configured on the server. Please define 'TWELVEDATA_API_KEY' in your environment secrets to unlock live Twelve Data candle diagnostics."
-      });
-    }
-
-    // Function to map symbol to Twelve Data standard
-    const mapToTwelveDataSymbol = (sym: string): string => {
-      const s = sym.trim().toUpperCase();
-      // Crypto
-      if (s === "BTCUSD" || s === "BTC/USD") return "BTC/USD";
-      if (s === "ETHUSD" || s === "ETH/USD") return "ETH/USD";
-      if (s === "SOLUSD" || s === "SOL/USD") return "SOL/USD";
-      if (s === "XRPUSD" || s === "XRP/USD") return "XRP/USD";
-      if (s === "ADAUSD" || s === "ADA/USD") return "ADA/USD";
-      
-      // Forex
-      if (s === "EURUSD" || s === "EUR/USD") return "EUR/USD";
-      if (s === "GBPUSD" || s === "GBP/USD") return "GBP/USD";
-      if (s === "USDJPY" || s === "USD/JPY") return "USD/JPY";
-      if (s === "USDCHF" || s === "USD/CHF") return "USD/CHF";
-      if (s === "AUDUSD" || s === "AUD/USD") return "AUD/USD";
-      if (s === "USDCAD" || s === "USD/CAD") return "USD/CAD";
-      if (s === "EURGBP" || s === "EUR/GBP") return "EUR/GBP";
-      if (s === "GBPJPY" || s === "GBP/JPY") return "GBP/JPY";
-      if (s === "NZDUSD" || s === "NZD/USD") return "NZD/USD";
-
-      // Commodities
-      if (s === "XAUUSD" || s === "XAU/USD") return "XAU/USD";
-      if (s === "XAGUSD" || s === "XAG/USD") return "XAG/USD";
-
-      // Indices
-      if (s === "SPX500") return "SPX";
-      if (s === "NAS100") return "NDX";
-      if (s === "US30") return "DJI";
-      if (s === "GER30" || s === "GERMAN30" || s === "DE30") return "DAX";
-      if (s === "UK100") return "FTSE";
-
-      // Standard split
-      if (s.length === 6 && !s.includes("/")) {
-        return s.slice(0, 3) + "/" + s.slice(3);
-      }
-      return s;
-    };
-
-    // Function to map timeframe to Twelve Data standard
-    const mapToTwelveDataTimeframe = (tf: string): string => {
-      const t = tf.trim();
-      if (t === "M1") return "1min";
-      if (t === "M5") return "5min";
-      if (t === "M15") return "15min";
-      if (t === "M30") return "30min";
-      if (t === "H1") return "1h";
-      if (t === "H4") return "4h";
-      if (t === "Daily" || t === "D") return "1day";
-      if (t === "Weekly" || t === "W") return "1week";
-      if (t === "Monthly" || t === "M") return "1month";
-      return "1day";
-    };
-
-    const resolvedSymbol = mapToTwelveDataSymbol(symbol);
-    const resolvedInterval = mapToTwelveDataTimeframe(timeframe);
-
-    // Call Twelve Data time_series endpoint with size=2
-    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(resolvedSymbol)}&interval=${resolvedInterval}&apikey=${apiKey}&size=2`;
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Twelve Data response HTTP state: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (data.status === "error" || !data.values || data.values.length === 0) {
-        return res.status(400).json({
-          error: "TWELVEDATA_API_ERROR",
-          message: data.message || `No data returned from Twelve Data for symbol ${resolvedSymbol} (${resolvedInterval}).`
-        });
-      }
-
-      // Latest candle is at index 0
-      const latestCandle = data.values[0];
-
-      return res.json({
-        status: "success",
-        symbol: resolvedSymbol,
-        interval: resolvedInterval,
-        candle: {
-          open: parseFloat(latestCandle.open),
-          high: parseFloat(latestCandle.high),
-          low: parseFloat(latestCandle.low),
-          close: parseFloat(latestCandle.close),
-          timestamp: latestCandle.datetime,
-          volume: latestCandle.volume ? parseFloat(latestCandle.volume) : 0
-        },
-        meta: {
-          twelveDataMeta: data.meta || null,
-          retrievedAt: new Date().toISOString()
-        }
-      });
-
-    } catch (e: any) {
-      console.error("[Twelve Data Proxy Error]:", e.message || e);
-      return res.status(500).json({
-        error: "TWELVEDATA_FETCH_FAILED",
-        message: `Failed to retrieve market data from Twelve Data: ${e.message || "Unknown communication state error."}`
-      });
-    }
-  });
-
   function generateHeuristicsAnalysis(symbol: string, strategy?: string, imageBase64?: string) {
     const cleanSymbol = (symbol || "EURUSD").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
     const seedStr = imageBase64 ? imageBase64.substring(50, Math.min(250, imageBase64.length)) : cleanSymbol;
@@ -1154,7 +1028,7 @@ Return your findings in the requested JSON structure.`
 
   // Secure Server-side Gemini AI analysis route using @google/genai with Key Rotation
   app.post("/api/analyze-chart", async (req, res) => {
-    const { image, strategy, userApiKey, symbol, timeframe, isLive, twelveDataCandle } = req.body;
+    const { image, strategy, userApiKey, symbol, timeframe, isLive } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: "Missing image payload." });
@@ -1188,11 +1062,11 @@ Return your findings in the requested JSON structure.`
     try {
 
       let promptString = "";
-      if (isLive && twelveDataCandle) {
+      if (isLive) {
         promptString = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
 
 Core Rules - Live Market Analysis:
-- There is NO screenshot uploaded. Use the supplied Twelve Data market candle data below as your absolute source of truth.
+- There is NO screenshot uploaded. Use standard market structures, institutional order flows, and structural support/resistance zones for the supplied asset and timeframe.
 - Strictly follow the step-by-step process below.
 - Maintain analytical discipline and probabilistic thinking at all times.
 - Use precise, professional language. Avoid retail slang.
@@ -1227,19 +1101,12 @@ Core Rules - Live Market Analysis:
 Supplied Source of Truth Market Data:
 * Trading Pair: ${symbol || "Unknown"}
 * Selected Timeframe: ${timeframe || "Unknown"}
-* Twelve Data OHLC Candle Details:
-  - Open: ${twelveDataCandle.open}
-  - High: ${twelveDataCandle.high}
-  - Low: ${twelveDataCandle.low}
-  - Close: ${twelveDataCandle.close}
-  - Timestamp: ${twelveDataCandle.timestamp}
-  - Volume: ${twelveDataCandle.volume || 'N/A'}
 
 Analysis Process (Live Market Data Focus):
 - STEP 1: Verify Market Data Context
-  Acknowledge the Trading Pair (${symbol || "Unknown"}) and Timeframe (${timeframe || "Unknown"}) and the Twelve Data OHLC candle details. Do not request any screenshots. Use these precise values as the reference point for your entire analysis.
+  Acknowledge the Trading Pair (${symbol || "Unknown"}) and Timeframe (${timeframe || "Unknown"}). Do not request any screenshots. Perform high-grade technical and fundamental analysis based on the selected criteria.
 - STEP 2: Primary Institutional Analysis
-  Analyze based on standard market behavior & the current candle location:
+  Analyze based on standard market behavior:
   * Overall trend direction and strength
   * Market structure (HH/HL, LH/LL, or transitional)
   * Key Support & Resistance levels (major and minor)
@@ -1272,7 +1139,7 @@ STEP 5: Final Output Requirements
 After completing all steps, deliver a structured professional report with the following sections in your "reason" field in valid Markdown format. Do NOT use any artificial word constraint!
 Give the complete detailed analysis with these sections:
 ### 1. Chart Overview
-[Details of trading pair, timeframe, current twelve data closed candle price and context]
+[Details of trading pair, timeframe, current active price zone and context]
 
 ### 2. Key Observations
 [Detailed trend, structure, order blocks, FVG, or liquidity zones identified]
@@ -1304,7 +1171,7 @@ Give the complete detailed analysis with these sections:
 Additional Guidelines:
 - Be objective. Clearly state when the setup is unclear or low-confluence.
 - Use proper risk-reward ratios (minimum 1:2 preferred for institutional grade setups).
-- Cite specific price levels accurately around the Twelve Data OHLC values.
+- Cite specific price levels accurately around current market zones.
 
 You MUST formulate the output as a valid JSON object matching the schema below:
 - "signal": State the concluded Overall Market Bias (strictly one of BUY, SELL, or "NO TRADE").

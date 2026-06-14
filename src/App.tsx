@@ -763,146 +763,6 @@ export default function App() {
   const [detectionConfidence, setDetectionConfidence] = useState<string | null>(null);
   const [isBiggerPictureMode, setIsBiggerPictureMode] = useState<boolean>(true);
 
-  // Twelve Data OHLC States and Hook
-  const [userTwelveDataKey, setUserTwelveDataKey] = useState<string>(() => localStorage.getItem("gaks_twelve_data_key") || "");
-  const [twelveDataCandle, setTwelveDataCandle] = useState<any>(null);
-  const [twelveDataLoading, setTwelveDataLoading] = useState<boolean>(false);
-  const [twelveDataError, setTwelveDataError] = useState<string | null>(null);
-
-  const handleTwelveDataKeyChange = (key: string) => {
-    setUserTwelveDataKey(key);
-    localStorage.setItem("gaks_twelve_data_key", key);
-  };
-
-  const fetchTwelveDataCandle = async (symbol: string, timeframe: string) => {
-    if (!symbol || !timeframe) {
-      setTwelveDataCandle(null);
-      return;
-    }
-    setTwelveDataLoading(true);
-    setTwelveDataError(null);
-
-    // Replicate symbol and timeframe mappings for direct client-side fetching
-    const mapToTwelveDataSymbol = (sym: string): string => {
-      const s = sym.trim().toUpperCase();
-      if (s === "BTCUSD" || s === "BTC/USD") return "BTC/USD";
-      if (s === "ETHUSD" || s === "ETH/USD") return "ETH/USD";
-      if (s === "SOLUSD" || s === "SOL/USD") return "SOL/USD";
-      if (s === "XRPUSD" || s === "XRP/USD") return "XRP/USD";
-      if (s === "ADAUSD" || s === "ADA/USD") return "ADA/USD";
-      
-      if (s === "EURUSD" || s === "EUR/USD") return "EUR/USD";
-      if (s === "GBPUSD" || s === "GBP/USD") return "GBP/USD";
-      if (s === "USDJPY" || s === "USD/JPY") return "USD/JPY";
-      if (s === "USDCHF" || s === "USD/CHF") return "USD/CHF";
-      if (s === "AUDUSD" || s === "AUD/USD") return "AUD/USD";
-      if (s === "USDCAD" || s === "USD/CAD") return "USD/CAD";
-      if (s === "EURGBP" || s === "EUR/GBP") return "EUR/GBP";
-      if (s === "GBPJPY" || s === "GBP/JPY") return "GBP/JPY";
-      if (s === "NZDUSD" || s === "NZD/USD") return "NZD/USD";
-
-      if (s === "XAUUSD" || s === "XAU/USD") return "XAU/USD";
-      if (s === "XAGUSD" || s === "XAG/USD") return "XAG/USD";
-
-      if (s === "SPX500") return "SPX";
-      if (s === "NAS100") return "NDX";
-      if (s === "US30") return "DJI";
-      if (s === "GER30" || s === "GERMAN30" || s === "DE30") return "DAX";
-      if (s === "UK100") return "FTSE";
-
-      if (s.length === 6 && !s.includes("/")) {
-        return s.slice(0, 3) + "/" + s.slice(3);
-      }
-      return s;
-    };
-
-    const mapToTwelveDataTimeframe = (tf: string): string => {
-      const t = tf.trim();
-      if (t === "M1") return "1min";
-      if (t === "M5") return "5min";
-      if (t === "M15") return "15min";
-      if (t === "M30") return "30min";
-      if (t === "H1") return "1h";
-      if (t === "H4") return "4h";
-      if (t === "Daily" || t === "D") return "1day";
-      if (t === "Weekly" || t === "W") return "1week";
-      if (t === "Monthly" || t === "M") return "1month";
-      return "1day";
-    };
-
-    const localKey = localStorage.getItem("gaks_twelve_data_key") || "";
-
-    // If a personal/local Twelve Data key is configured, use it directly (client-side)
-    if (localKey.trim() !== "") {
-      const resolvedSymbol = mapToTwelveDataSymbol(symbol);
-      const resolvedInterval = mapToTwelveDataTimeframe(timeframe);
-      const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(resolvedSymbol)}&interval=${resolvedInterval}&apikey=${localKey.trim()}&size=2`;
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Twelve Data response HTTP: ${response.status}`);
-        }
-        const data = await response.json();
-        if (data.status === "error" || !data.values || data.values.length === 0) {
-          setTwelveDataCandle(null);
-          setTwelveDataError(data.message || `No data returned from Twelve Data for symbol ${resolvedSymbol}.`);
-          setTwelveDataLoading(false);
-          return;
-        }
-        const latestCandle = data.values[0];
-        setTwelveDataCandle({
-          open: parseFloat(latestCandle.open),
-          high: parseFloat(latestCandle.high),
-          low: parseFloat(latestCandle.low),
-          close: parseFloat(latestCandle.close),
-          timestamp: latestCandle.datetime,
-          volume: latestCandle.volume ? parseFloat(latestCandle.volume) : 0
-        });
-        setTwelveDataLoading(false);
-        return;
-      } catch (err: any) {
-        setTwelveDataCandle(null);
-        setTwelveDataError(err.message || "Failed client-side retrieval from Twelve Data API.");
-        setTwelveDataLoading(false);
-        return;
-      }
-    }
-
-    // Otherwise, try fallback to backend proxy server
-    try {
-      const response = await fetch("/api/twelve-data-ohlc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol, timeframe })
-      });
-      const data = await response.json();
-      if (response.ok && data.status === "success") {
-        setTwelveDataCandle(data.candle);
-      } else {
-        setTwelveDataCandle(null);
-        if (data.error === "TWELVEDATA_API_KEY_MISSING") {
-          setTwelveDataError("TWELVEDATA_API_KEY_MISSING");
-        } else {
-          setTwelveDataError(data.message || data.error || "Failed to retrieve Twelve Data candle details.");
-        }
-      }
-    } catch (err: any) {
-      setTwelveDataCandle(null);
-      setTwelveDataError("TWELVEDATA_API_KEY_MISSING");
-    } finally {
-      setTwelveDataLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (detectedSymbol && detectedTimeframe) {
-      fetchTwelveDataCandle(detectedSymbol, detectedTimeframe);
-    } else {
-      setTwelveDataCandle(null);
-      setTwelveDataError(null);
-    }
-  }, [detectedSymbol, detectedTimeframe]);
-
   // Option A & C API Rotation State Hooks
   const [showApiSettings, setShowApiSettings] = useState<boolean>(false);
   const [isKeyPoolExhausted, setIsKeyPoolExhausted] = useState<boolean>(false);
@@ -1786,8 +1646,7 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
             userApiKey: userGeminiKey,
             symbol: detectedSymbol,
             timeframe: detectedTimeframe,
-            isLive,
-            twelveDataCandle
+            isLive
           }),
           signal: controller.signal
         });
@@ -1845,16 +1704,16 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
           "Bypassing offline server... Initiating direct high-stability browser API flow...",
           "Authorizing client-side Secure Handshake direct query...",
           isLive 
-            ? "Analyzing Twelve Data OHLC candle metrics directly via Gemini..." 
+            ? "Analyzing live interactive TradingView chart context via Gemini..." 
             : "Analyzing visual candle dynamics and strategy rules directly via Gemini..."
         ]);
 
         let fullPrompt = "";
-        if (isLive && twelveDataCandle) {
+        if (isLive) {
           fullPrompt = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
 
 Core Rules - Live Market Analysis:
-- There is NO screenshot uploaded. Use the supplied Twelve Data market candle data below as your absolute source of truth.
+- There is NO screenshot uploaded. Use standard market structures, institutional order flows, and structural support/resistance zones for the supplied asset and timeframe.
 - Strictly follow the step-by-step process below.
 - Maintain analytical discipline and probabilistic thinking at all times.
 - Use precise, professional language. Avoid retail slang.
@@ -1889,19 +1748,12 @@ Core Rules - Live Market Analysis:
 Supplied Source of Truth Market Data:
 * Trading Pair: ${detectedSymbol || "Unknown"}
 * Selected Timeframe: ${detectedTimeframe || "Unknown"}
-* Twelve Data OHLC Candle Details:
-  - Open: ${twelveDataCandle.open}
-  - High: ${twelveDataCandle.high}
-  - Low: ${twelveDataCandle.low}
-  - Close: ${twelveDataCandle.close}
-  - Timestamp: ${twelveDataCandle.timestamp}
-  - Volume: ${twelveDataCandle.volume || 'N/A'}
 
 Analysis Process (Live Market Data Focus):
 - STEP 1: Verify Market Data Context
-  Acknowledge the Trading Pair and Timeframe and the Twelve Data OHLC candle details. Do not request any screenshots. Use these precise values as the reference point for your entire analysis.
+  Acknowledge the Trading Pair and Timeframe. Do not request any screenshots. Perform high-grade technical and fundamental analysis based on the selected criteria.
 - STEP 2: Primary Institutional Analysis
-  Analyze based on standard market behavior & the current candle location:
+  Analyze based on standard market behavior:
   * Overall trend direction and strength
   * Market structure (HH/HL, LH/LL, or transitional)
   * Key Support & Resistance levels (major and minor)
@@ -1934,7 +1786,7 @@ STEP 5: Final Output Requirements
 After completing all steps, deliver a structured professional report with the following sections in your "reason" field in valid Markdown format. Do NOT use any artificial word constraint!
 Give the complete detailed analysis with these sections:
 ### 1. Chart Overview
-[Details of trading pair, timeframe, current twelve data closed candle price and context]
+[Details of trading pair, timeframe, current active price zone and context]
 
 ### 2. Key Observations
 [Detailed trend, structure, order blocks, FVG, or liquidity zones identified]
@@ -1966,7 +1818,7 @@ Give the complete detailed analysis with these sections:
 Additional Guidelines:
 - Be objective. Clearly state when the setup is unclear or low-confluence.
 - Use proper risk-reward ratios (minimum 1:2 preferred for institutional grade setups).
-- Cite specific price levels accurately around the Twelve Data OHLC values.
+- Cite specific price levels accurately around current market zones.
 
 You MUST formulate the output as a valid JSON object matching the schema below:
 - "signal": State the concluded Overall Market Bias (strictly one of BUY, SELL, or "NO TRADE").
@@ -3492,152 +3344,6 @@ Risk Reminder: ${riskReminder}`;
                   )}
                 </div>
               </div>
-
-              {/* Twelve Data OHLC Diagnostics Panel */}
-              {detectedSymbol && detectedTimeframe && (
-                <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] mb-4 relative overflow-hidden">
-                  <div className="flex justify-between items-center pb-2.5 mb-3 border-b border-white/5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/70 font-mono">
-                        Twelve Data OHLC Candlestick Diagnostics
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => fetchTwelveDataCandle(detectedSymbol, detectedTimeframe)}
-                      disabled={twelveDataLoading}
-                      className="text-[9px] font-mono text-white/50 hover:text-white flex items-center gap-1 bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all rounded px-2 py-1 select-none"
-                    >
-                      <i className={`ph ph-arrows-counter-clockwise text-[10px] ${twelveDataLoading ? "animate-spin" : ""}`} />
-                      <span>{twelveDataLoading ? "FETCHING..." : "REFRESH"}</span>
-                    </button>
-                  </div>
-
-                  {twelveDataLoading ? (
-                    <div className="py-8 flex flex-col items-center justify-center gap-2">
-                      <div className="w-5 h-5 rounded-full border-2 border-white/10 border-t-emerald-500 animate-spin" />
-                      <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest animate-pulse">
-                        Querying Twelve Data API...
-                      </span>
-                    </div>
-                  ) : twelveDataError === "TWELVEDATA_API_KEY_MISSING" ? (
-                    <div className="p-4 border border-amber-500/20 bg-amber-500/5 rounded-xl">
-                      <div className="flex items-start gap-2.5 mb-3">
-                        <i className="ph ph-key text-base text-amber-500 mt-0.5" />
-                        <div>
-                          <div className="text-[11px] font-bold text-amber-400 font-sans uppercase tracking-wider mb-0.5">
-                            Twelve Data API Key Required
-                          </div>
-                          <p className="text-[10px] text-neutral-400 font-sans leading-relaxed">
-                            A personal Twelve Data API Key is required for live candle statistics when running on Vercel or when the server secret is absent.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <input
-                          type="password"
-                          placeholder="Paste Twelve Data API key..."
-                          value={userTwelveDataKey}
-                          onChange={(e) => handleTwelveDataKeyChange(e.target.value)}
-                          className="flex-1 bg-neutral-900 border border-neutral-800 focus:border-neutral-700 text-xs px-3 py-2 rounded-lg text-neutral-200 font-mono outline-none"
-                        />
-                        <button
-                          onClick={() => {
-                            if (userTwelveDataKey.trim()) {
-                              fetchTwelveDataCandle(detectedSymbol, detectedTimeframe);
-                            }
-                          }}
-                          className="bg-neutral-850 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all"
-                        >
-                          Unlock
-                        </button>
-                      </div>
-                      <div className="mt-2 text-[9px] font-mono text-neutral-500">
-                        <a href="https://twelvedata.com/" target="_blank" rel="noreferrer" className="text-amber-500/80 hover:text-amber-400 transition-colors">
-                          Get free key at twelvedata.com &rarr;
-                        </a>
-                      </div>
-                    </div>
-                  ) : twelveDataError ? (
-                    <div className="p-3 border border-red-500/10 bg-red-500/5 rounded-lg flex items-start gap-2.5">
-                      <i className="ph ph-warning-octagon text-sm text-red-500/80 mt-0.5" />
-                      <div className="flex-1">
-                        <div className="text-[10px] font-bold text-red-400 font-mono uppercase tracking-wider mb-1">
-                          Data Retrieval Error
-                        </div>
-                        <p className="text-[10px] text-white/60 font-mono leading-normal">
-                          {twelveDataError}
-                        </p>
-                      </div>
-                    </div>
-                  ) : twelveDataCandle ? (
-                    <div>
-                      {/* Grid containing the values */}
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
-                        {/* Open */}
-                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
-                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">OPEN</span>
-                          <span className="text-xs font-mono font-bold text-white/90">
-                            {formatPrice(detectedSymbol, twelveDataCandle.open)}
-                          </span>
-                        </div>
-
-                        {/* High */}
-                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
-                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">HIGH</span>
-                          <span className="text-xs font-mono font-bold text-emerald-400">
-                            {formatPrice(detectedSymbol, twelveDataCandle.high)}
-                          </span>
-                        </div>
-
-                        {/* Low */}
-                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
-                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">LOW</span>
-                          <span className="text-xs font-mono font-bold text-rose-400">
-                            {formatPrice(detectedSymbol, twelveDataCandle.low)}
-                          </span>
-                        </div>
-
-                        {/* Close */}
-                        <div className="bg-white/5 p-2 rounded-lg border border-white/5 text-center flex flex-col justify-center">
-                          <span className="text-[9px] font-bold text-white/40 uppercase tracking-wider font-mono block mb-1">CLOSE</span>
-                          <span className="text-xs font-mono font-bold text-white/90">
-                            {formatPrice(detectedSymbol, twelveDataCandle.close)}
-                          </span>
-                        </div>
-
-                        {/* Calculated Change / Direction */}
-                        <div className={`col-span-2 sm:col-span-1 p-2 rounded-lg border text-center flex flex-col justify-center ${
-                          twelveDataCandle.close >= twelveDataCandle.open
-                            ? "bg-emerald-500/5 border-emerald-500/10 text-emerald-400"
-                            : "bg-rose-500/5 border-rose-500/10 text-rose-400"
-                        }`}>
-                          <span className="text-[9px] font-bold uppercase tracking-wider font-mono block mb-1 opacity-60">DIRECTION</span>
-                          <span className="text-xs font-mono font-black uppercase flex items-center justify-center gap-1">
-                            <i className={`ph ph-arrow-${twelveDataCandle.close >= twelveDataCandle.open ? "up" : "down"}-bold`} />
-                            {twelveDataCandle.close >= twelveDataCandle.open ? "BULLISH" : "BEARISH"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Footer Metadata */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-[9px] text-white/30 font-mono pt-2 border-t border-white/5">
-                        <span>INSTRUMENT: <strong className="text-white/50">{detectedSymbol}</strong></span>
-                        <span>BAR TIMEFRAME: <strong className="text-white/50">{detectedTimeframe}</strong></span>
-                        {twelveDataCandle.volume !== undefined && (
-                          <span>VOLUME: <strong className="text-white/50">{twelveDataCandle.volume.toLocaleString()}</strong></span>
-                        )}
-                        <span>CANDLE TIME: <strong className="text-white/50">{twelveDataCandle.timestamp}</strong></span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 text-center text-[10px] text-white/30 font-mono">
-                      No candle data loaded. Select another pair or timeframe to retry.
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Required Analysis Metadata Settings Panel */}
               <div className="card p-4 border border-white/10 rounded-xl bg-[#0F0F0F] mb-4 flex flex-col gap-4 relative">
@@ -5397,50 +5103,6 @@ Risk Reminder: ${riskReminder}`;
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Panel 2: Personal Twelve Data Override */}
-            <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-xs font-bold text-neutral-205 tracking-wide uppercase flex items-center gap-2 leading-none font-sans">
-                  <i className="ph ph-key text-emerald-500" />
-                  Personal Twelve Data API Key
-                </h3>
-                <a
-                  href="https://twelvedata.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] text-emerald-500 hover:text-emerald-400 transition-colors flex items-center gap-0.5 font-mono font-medium"
-                >
-                  Get Free Key <i className="ph ph-arrow-square-out text-[9px]" />
-                </a>
-              </div>
-
-              <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
-                By setting a personal Twelve Data key, you activate direct client-side candlesticks query streams without relying on proxy servers. Your key stays stored securely on your browser.
-              </p>
-
-              <div className="space-y-3 font-sans">
-                <div className="relative flex items-center">
-                  <input
-                    type="password"
-                    value={userTwelveDataKey}
-                    onChange={(e) => handleTwelveDataKeyChange(e.target.value)}
-                    placeholder="Paste Twelve Data API key here..."
-                    className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-lg pr-10 outline-none focus:border-neutral-600 font-mono transition-colors"
-                  />
-                  {userTwelveDataKey && (
-                    <button
-                      type="button"
-                      onClick={() => handleTwelveDataKeyChange("")}
-                      className="absolute right-3.5 text-neutral-500 hover:text-neutral-350 transition-colors"
-                      title="Clear key"
-                    >
-                      <i className="ph ph-x text-sm" />
-                    </button>
-                  )}
-                </div>
               </div>
             </div>
 
