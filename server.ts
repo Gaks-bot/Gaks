@@ -540,18 +540,25 @@ async function startServer() {
 
   const KEYS_FILE = path.join(process.cwd(), "admin_keys.json");
 
+  let adminKeysCache: AdminKey[] | null = null;
+
   function readAdminKeys(): AdminKey[] {
+    if (adminKeysCache) {
+      return adminKeysCache;
+    }
+
+    let loadedKeys: AdminKey[] = [];
     try {
       if (fs.existsSync(KEYS_FILE)) {
         const data = fs.readFileSync(KEYS_FILE, "utf-8");
-        return JSON.parse(data);
+        loadedKeys = JSON.parse(data);
       }
     } catch (err) {
-      console.error("Error reading admin keys:", err);
+      console.error("Error reading admin keys from file:", err);
     }
 
-    // fallback migration of existing ecosystem keys
-    const rawKeys = [
+    // Dynamically retrieve environment parameters
+    const envKeys = [
       process.env.GEMINI_API_KEY,
       process.env.GEMINI_API_KEY_2,
       process.env.GEMINI_API_KEY_3,
@@ -559,30 +566,66 @@ async function startServer() {
       process.env.GEMINI_API_KEY_5
     ].map(k => k?.trim()).filter(k => k && k !== "MY_GEMINI_API_KEY" && !k.includes("DEMO_HOLDER")) as string[];
 
-    if (rawKeys.length === 0) {
-      for (let i = 1; i <= 5; i++) {
-        rawKeys.push(`GEMINI_API_KEY_DEMO_HOLDER_${i}`);
+    const finalKeys: AdminKey[] = [...loadedKeys];
+
+    envKeys.forEach((envKey, index) => {
+      const existsIndex = finalKeys.findIndex(k => k.key === envKey);
+      if (existsIndex === -1) {
+        // Prepend fresh server environment variables to prioritize them
+        finalKeys.unshift({
+          id: `admin-key-env-${index}-${Date.now()}`,
+          key: envKey,
+          status: "Active",
+          error_message: "",
+          averageLatency: 120 + index * 15,
+          successCount: 10,
+          failureCount: 0,
+          lastUsed: new Date().toISOString()
+        });
+      } else {
+        // If it was written to file as invalid/quota-exceeded, but exists in current execution env,
+        // we can restore/keep it Active in the pool since environment secrets are the ground truth.
+        if (finalKeys[existsIndex].status !== "Active") {
+          finalKeys[existsIndex].status = "Active";
+          finalKeys[existsIndex].error_message = "";
+        }
+      }
+    });
+
+    const realKeysFound = finalKeys.filter(k => !k.key.includes("DEMO_HOLDER"));
+    if (realKeysFound.length > 0) {
+      // Exclude generic template placeholder keys since real production credentials exist
+      adminKeysCache = realKeysFound;
+    } else {
+      if (finalKeys.length === 0) {
+        const fallbackKeys: AdminKey[] = [];
+        for (let i = 1; i <= 5; i++) {
+          fallbackKeys.push({
+            id: `admin-key-init-${i}`,
+            key: `GEMINI_API_KEY_DEMO_HOLDER_${i}`,
+            status: "Active",
+            error_message: "",
+            averageLatency: 130 + i * 20,
+            successCount: 12,
+            failureCount: 0,
+            lastUsed: new Date().toISOString()
+          });
+        }
+        adminKeysCache = fallbackKeys;
+      } else {
+        adminKeysCache = finalKeys;
       }
     }
 
-    const initialKeys: AdminKey[] = rawKeys.map((k, i) => ({
-      id: `admin-key-init-${i}`,
-      key: k,
-      status: "Active",
-      error_message: "",
-      averageLatency: 130 + i * 20,
-      successCount: 12 + i * 4,
-      failureCount: 0,
-      lastUsed: new Date(Date.now() - (i * 45 * 60 * 1000)).toISOString()
-    }));
-
     try {
-      fs.writeFileSync(KEYS_FILE, JSON.stringify(initialKeys, null, 2), "utf-8");
+      fs.writeFileSync(KEYS_FILE, JSON.stringify(adminKeysCache, null, 2), "utf-8");
     } catch (_) {}
-    return initialKeys;
+
+    return adminKeysCache;
   }
 
   function saveAdminKeys(keys: AdminKey[]) {
+    adminKeysCache = keys;
     try {
       fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), "utf-8");
     } catch (err) {

@@ -764,9 +764,15 @@ export default function App() {
   const [isBiggerPictureMode, setIsBiggerPictureMode] = useState<boolean>(true);
 
   // Twelve Data OHLC States and Hook
+  const [userTwelveDataKey, setUserTwelveDataKey] = useState<string>(() => localStorage.getItem("gaks_twelve_data_key") || "");
   const [twelveDataCandle, setTwelveDataCandle] = useState<any>(null);
   const [twelveDataLoading, setTwelveDataLoading] = useState<boolean>(false);
   const [twelveDataError, setTwelveDataError] = useState<string | null>(null);
+
+  const handleTwelveDataKeyChange = (key: string) => {
+    setUserTwelveDataKey(key);
+    localStorage.setItem("gaks_twelve_data_key", key);
+  };
 
   const fetchTwelveDataCandle = async (symbol: string, timeframe: string) => {
     if (!symbol || !timeframe) {
@@ -775,6 +781,94 @@ export default function App() {
     }
     setTwelveDataLoading(true);
     setTwelveDataError(null);
+
+    // Replicate symbol and timeframe mappings for direct client-side fetching
+    const mapToTwelveDataSymbol = (sym: string): string => {
+      const s = sym.trim().toUpperCase();
+      if (s === "BTCUSD" || s === "BTC/USD") return "BTC/USD";
+      if (s === "ETHUSD" || s === "ETH/USD") return "ETH/USD";
+      if (s === "SOLUSD" || s === "SOL/USD") return "SOL/USD";
+      if (s === "XRPUSD" || s === "XRP/USD") return "XRP/USD";
+      if (s === "ADAUSD" || s === "ADA/USD") return "ADA/USD";
+      
+      if (s === "EURUSD" || s === "EUR/USD") return "EUR/USD";
+      if (s === "GBPUSD" || s === "GBP/USD") return "GBP/USD";
+      if (s === "USDJPY" || s === "USD/JPY") return "USD/JPY";
+      if (s === "USDCHF" || s === "USD/CHF") return "USD/CHF";
+      if (s === "AUDUSD" || s === "AUD/USD") return "AUD/USD";
+      if (s === "USDCAD" || s === "USD/CAD") return "USD/CAD";
+      if (s === "EURGBP" || s === "EUR/GBP") return "EUR/GBP";
+      if (s === "GBPJPY" || s === "GBP/JPY") return "GBP/JPY";
+      if (s === "NZDUSD" || s === "NZD/USD") return "NZD/USD";
+
+      if (s === "XAUUSD" || s === "XAU/USD") return "XAU/USD";
+      if (s === "XAGUSD" || s === "XAG/USD") return "XAG/USD";
+
+      if (s === "SPX500") return "SPX";
+      if (s === "NAS100") return "NDX";
+      if (s === "US30") return "DJI";
+      if (s === "GER30" || s === "GERMAN30" || s === "DE30") return "DAX";
+      if (s === "UK100") return "FTSE";
+
+      if (s.length === 6 && !s.includes("/")) {
+        return s.slice(0, 3) + "/" + s.slice(3);
+      }
+      return s;
+    };
+
+    const mapToTwelveDataTimeframe = (tf: string): string => {
+      const t = tf.trim();
+      if (t === "M1") return "1min";
+      if (t === "M5") return "5min";
+      if (t === "M15") return "15min";
+      if (t === "M30") return "30min";
+      if (t === "H1") return "1h";
+      if (t === "H4") return "4h";
+      if (t === "Daily" || t === "D") return "1day";
+      if (t === "Weekly" || t === "W") return "1week";
+      if (t === "Monthly" || t === "M") return "1month";
+      return "1day";
+    };
+
+    const localKey = localStorage.getItem("gaks_twelve_data_key") || "";
+
+    // If a personal/local Twelve Data key is configured, use it directly (client-side)
+    if (localKey.trim() !== "") {
+      const resolvedSymbol = mapToTwelveDataSymbol(symbol);
+      const resolvedInterval = mapToTwelveDataTimeframe(timeframe);
+      const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(resolvedSymbol)}&interval=${resolvedInterval}&apikey=${localKey.trim()}&size=2`;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Twelve Data response HTTP: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.status === "error" || !data.values || data.values.length === 0) {
+          setTwelveDataCandle(null);
+          setTwelveDataError(data.message || `No data returned from Twelve Data for symbol ${resolvedSymbol}.`);
+          setTwelveDataLoading(false);
+          return;
+        }
+        const latestCandle = data.values[0];
+        setTwelveDataCandle({
+          open: parseFloat(latestCandle.open),
+          high: parseFloat(latestCandle.high),
+          low: parseFloat(latestCandle.low),
+          close: parseFloat(latestCandle.close),
+          timestamp: latestCandle.datetime,
+          volume: latestCandle.volume ? parseFloat(latestCandle.volume) : 0
+        });
+        setTwelveDataLoading(false);
+        return;
+      } catch (err: any) {
+        setTwelveDataCandle(null);
+        setTwelveDataError(err.message || "Failed client-side retrieval from Twelve Data API.");
+        setTwelveDataLoading(false);
+        return;
+      }
+    }
+
+    // Otherwise, try fallback to backend proxy server
     try {
       const response = await fetch("/api/twelve-data-ohlc", {
         method: "POST",
@@ -787,14 +881,14 @@ export default function App() {
       } else {
         setTwelveDataCandle(null);
         if (data.error === "TWELVEDATA_API_KEY_MISSING") {
-          setTwelveDataError("Twelve Data API Key is not configured on the server. Please define 'TWELVEDATA_API_KEY' in your environment secrets to unlock live Twelve Data candle diagnostics.");
+          setTwelveDataError("TWELVEDATA_API_KEY_MISSING");
         } else {
           setTwelveDataError(data.message || data.error || "Failed to retrieve Twelve Data candle details.");
         }
       }
     } catch (err: any) {
       setTwelveDataCandle(null);
-      setTwelveDataError(err.message || "Network communication failure.");
+      setTwelveDataError("TWELVEDATA_API_KEY_MISSING");
     } finally {
       setTwelveDataLoading(false);
     }
@@ -3426,6 +3520,45 @@ Risk Reminder: ${riskReminder}`;
                         Querying Twelve Data API...
                       </span>
                     </div>
+                  ) : twelveDataError === "TWELVEDATA_API_KEY_MISSING" ? (
+                    <div className="p-4 border border-amber-500/20 bg-amber-500/5 rounded-xl">
+                      <div className="flex items-start gap-2.5 mb-3">
+                        <i className="ph ph-key text-base text-amber-500 mt-0.5" />
+                        <div>
+                          <div className="text-[11px] font-bold text-amber-400 font-sans uppercase tracking-wider mb-0.5">
+                            Twelve Data API Key Required
+                          </div>
+                          <p className="text-[10px] text-neutral-400 font-sans leading-relaxed">
+                            A personal Twelve Data API Key is required for live candle statistics when running on Vercel or when the server secret is absent.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          placeholder="Paste Twelve Data API key..."
+                          value={userTwelveDataKey}
+                          onChange={(e) => handleTwelveDataKeyChange(e.target.value)}
+                          className="flex-1 bg-neutral-900 border border-neutral-800 focus:border-neutral-700 text-xs px-3 py-2 rounded-lg text-neutral-200 font-mono outline-none"
+                        />
+                        <button
+                          onClick={() => {
+                            if (userTwelveDataKey.trim()) {
+                              fetchTwelveDataCandle(detectedSymbol, detectedTimeframe);
+                            }
+                          }}
+                          className="bg-neutral-850 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all"
+                        >
+                          Unlock
+                        </button>
+                      </div>
+                      <div className="mt-2 text-[9px] font-mono text-neutral-500">
+                        <a href="https://twelvedata.com/" target="_blank" rel="noreferrer" className="text-amber-500/80 hover:text-amber-400 transition-colors">
+                          Get free key at twelvedata.com &rarr;
+                        </a>
+                      </div>
+                    </div>
                   ) : twelveDataError ? (
                     <div className="p-3 border border-red-500/10 bg-red-500/5 rounded-lg flex items-start gap-2.5">
                       <i className="ph ph-warning-octagon text-sm text-red-500/80 mt-0.5" />
@@ -5264,6 +5397,50 @@ Risk Reminder: ${riskReminder}`;
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Panel 2: Personal Twelve Data Override */}
+            <div className="card p-5 border border-neutral-800/60 bg-[#0d0d0d] rounded-xl relative overflow-hidden">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-xs font-bold text-neutral-205 tracking-wide uppercase flex items-center gap-2 leading-none font-sans">
+                  <i className="ph ph-key text-emerald-500" />
+                  Personal Twelve Data API Key
+                </h3>
+                <a
+                  href="https://twelvedata.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-emerald-500 hover:text-emerald-400 transition-colors flex items-center gap-0.5 font-mono font-medium"
+                >
+                  Get Free Key <i className="ph ph-arrow-square-out text-[9px]" />
+                </a>
+              </div>
+
+              <p className="text-[11px] text-neutral-400 mt-0 mb-4 leading-relaxed font-sans">
+                By setting a personal Twelve Data key, you activate direct client-side candlesticks query streams without relying on proxy servers. Your key stays stored securely on your browser.
+              </p>
+
+              <div className="space-y-3 font-sans">
+                <div className="relative flex items-center">
+                  <input
+                    type="password"
+                    value={userTwelveDataKey}
+                    onChange={(e) => handleTwelveDataKeyChange(e.target.value)}
+                    placeholder="Paste Twelve Data API key here..."
+                    className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs px-3.5 py-3 rounded-lg pr-10 outline-none focus:border-neutral-600 font-mono transition-colors"
+                  />
+                  {userTwelveDataKey && (
+                    <button
+                      type="button"
+                      onClick={() => handleTwelveDataKeyChange("")}
+                      className="absolute right-3.5 text-neutral-500 hover:text-neutral-350 transition-colors"
+                      title="Clear key"
+                    >
+                      <i className="ph ph-x text-sm" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
