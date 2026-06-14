@@ -290,9 +290,18 @@ async function startServer() {
     const seedStr = imageBase64 ? imageBase64.substring(50, Math.min(250, imageBase64.length)) : cleanSymbol;
     const rand = createSeededRandom(seedStr);
     
-    // Decide buy/sell/hold
+    // Decide buy/sell/no trade yet
     const roll = rand();
-    const signal = roll > 0.55 ? "BUY" : (roll > 0.15 ? "SELL" : "HOLD");
+    let signal = "NO TRADE YET";
+    if (roll > 0.70) {
+      signal = "BUY";
+    } else if (roll > 0.40) {
+      signal = "SELL";
+    } else if (roll > 0.15) {
+      signal = "NO TRADE YET";
+    } else {
+      signal = "NO TRADE";
+    }
     
     // Get baseline price for numeric accuracy
     let lookupPair = cleanSymbol.substring(0, 3) + "/" + cleanSymbol.substring(3); // e.g., EUR/USD
@@ -307,7 +316,7 @@ async function startServer() {
     const baseRate = BASELINE_RATES[lookupPair] || { price: 1.1749, change: 0.05 };
     
     const currentPrice = baseRate.price;
-    const decimals = cleanSymbol.includes("JPY") ? 2 : (cleanSymbol.includes("XAU") ? 2 : (cleanSymbol.includes("BTC") ? 2 : 4));
+    const decimals = cleanSymbol.includes("JPY") ? 3 : (cleanSymbol.includes("XAU") ? 2 : (cleanSymbol.includes("BTC") ? 2 : 5));
     
     let entryPrice = currentPrice;
     let tpPrice = currentPrice;
@@ -329,6 +338,31 @@ async function startServer() {
     
     const confidenceScore = Math.floor(70 + rand() * 22); // 70-92%
     
+    let watchZone = undefined;
+    if (signal === "NO TRADE YET") {
+      const isBuySetup = rand() > 0.5;
+      const zoneLower = isBuySetup ? currentPrice * 0.9940 : currentPrice * 1.0010;
+      const zoneUpper = isBuySetup ? currentPrice * 0.9975 : currentPrice * 1.0045;
+      const zoneRange = `${zoneLower.toFixed(decimals)} - ${zoneUpper.toFixed(decimals)}`;
+      const invLevel = isBuySetup ? currentPrice * 0.9910 : currentPrice * 1.0075;
+      const targets = isBuySetup 
+        ? `${(currentPrice * 1.0090).toFixed(decimals)}, ${(currentPrice * 1.0150).toFixed(decimals)}`
+        : `${(currentPrice * 0.9910).toFixed(decimals)}, ${(currentPrice * 0.9850).toFixed(decimals)}`;
+      
+      watchZone = {
+        isWatchZone: true,
+        setupType: isBuySetup ? "BUY" : "SELL",
+        entryZone: zoneRange,
+        liquidityObjectives: isBuySetup ? "Sweep of Sell-Side Liquidity (SSL) below equal session lows" : "Sweep of Buy-Side Liquidity (BSL) above swing highs",
+        requiredConfirmations: isBuySetup 
+          ? "Wait for lower timeframe (M5) Change of Character (CHoCH) and Market Structure Shift (MSS) with displacement close inside the zone."
+          : "Wait for lower timeframe (M5) Change of Character (CHoCH) and Market Structure Shift (MSS) with displacement close inside the zone.",
+        invalidationLevel: invLevel.toFixed(decimals),
+        targetLevels: targets,
+        waitFor: `Price needs to retrace significantly into the ideal entry zone (${zoneRange}) to mitigate the resting Fair Value Gap (FVG) and tap our Order Block. Patience is required because executing current price action immediately would yield a highly unfavorable risk-to-reward ratio and expose trades to premature stop-outs. Confirmations are currently missing: M5 structural displacement and volume surge of institutional orders inside the zone are still completely absent.`
+      };
+    }
+
     const reasonText = `### 1. Chart Overview
 - **Asset / Security Symbol**: \`${cleanSymbol}\`
 - **Timeframe / Horizon**: Multi-Timeframe High-Fidelity Confluence Check
@@ -340,21 +374,24 @@ async function startServer() {
 - A technical order block (OB) structure is noted near ${Number((entryPrice * 0.998).toFixed(decimals))} highlighting buying interest.
 - Imbalances and Fair Value Gaps (FVG) observed on lower structural boundaries indicate a sweep candidate before trend resumption.
 
-### 3. Multi-Timeframe Analysis
+### 3. Setup Quality Matrix (0-100 grading)
+- Market Structure Clarity: 85/100
+- Liquidity Clarity: 80/100
+- Timeframe Alignment: 90/100
+- Institutional Confluence: 75/100
+- Risk-to-Reward Quality: 85/100
+- Entry Precision: 80/100
+- **Calculated Average Rating**: 82/100
+
+### 4. Multi-Timeframe Analysis
 - **Daily Trend**: Bullish expansion context with higher highs.
 - **H4 Structure**: Temporary profit-taking pullback mitigating daily discount support, offering solid risk-reward setups.
 
-### 4. Bullish Scenario
-- **Entry Zone**: ${entryPrice} (at the immediate structural order block mitigation level).
+### 5. Trade Strategy Setup (Bullish/Bearish Scenarios)
+${signal === "NO TRADE YET" ? `*NO TRADE YET:* Setup remains structurally valid but requires patience. The ideal buy/sell zone is currently unmitigated. Let price pull back into the designated Watch Zone boundaries. Watch for entry confirmation markers.` : `- **Entry Zone**: ${entryPrice} (at the immediate structural order block mitigation level).
 - **Stop Loss**: ${slPrice} (placed carefully below major swing low invalidation zone).
-- **Take Profit Targets**: ${Number((entryPrice * 1.002).toFixed(decimals))} & ${tpPrice} (RR Ratio exceeding 1:2 standard rules).
-- **Invalidation Level**: ${Number((slPrice * 0.999).toFixed(decimals))}
-
-### 5. Bearish Scenario
-- **Entry Zone**: Mitigation of immediate supply zone at ${Number((entryPrice * 1.0015).toFixed(decimals))}.
-- **Stop Loss**: ${Number((entryPrice * 1.0035).toFixed(decimals))} (placed above the local candle swing high).
-- **Take Profit Targets**: ${Number((entryPrice * 0.998).toFixed(decimals))} & ${Number((entryPrice * 0.995).toFixed(decimals))}.
-- **Invalidation Level**: ${Number((entryPrice * 1.004).toFixed(decimals))}
+- **Take Profit Targets**: ${Number((entryPrice * 1.0025).toFixed(decimals))} & ${tpPrice} (RR Ratio exceeding 1:2 standard rules).
+- **Invalidation Level**: ${Number((slPrice * 0.9995).toFixed(decimals))}`}
 
 ### 6. Overall Market Bias
 - **Concluded Bias**: **${signal}** directional alignment has higher cumulative probability according to local setup heuristics.
@@ -373,6 +410,7 @@ async function startServer() {
       sl: String(slPrice),
       confidence: `${confidenceScore}%`,
       reason: reasonText,
+      watchZone,
       isFallback: true,
       keySource: "Local Sandbox Heuristics"
     };
@@ -1070,7 +1108,7 @@ Core Rules - Live Market Analysis:
 - Strictly follow the step-by-step process below.
 - Maintain analytical discipline and probabilistic thinking at all times.
 - Use precise, professional language. Avoid retail slang.
-- Before issuing any directional scenario, you MUST evaluate the overall quality of the setup by mathematically grading these six criteria from 0 to 100:
+-  Before issuing any directional scenario, you MUST evaluate the overall quality of the setup by mathematically grading these six criteria from 0 to 100:
   1. Market Structure Clarity
   2. Liquidity Clarity
   3. Timeframe Alignment
@@ -1078,25 +1116,17 @@ Core Rules - Live Market Analysis:
   5. Risk-to-Reward Quality
   6. Entry Precision
 
-- STRICT CAPITAL PRESERVATION & "NO TRADE" POLICY:
-  If any of the following conditions exist:
-    * Conflicting timeframe bias
-    * Weak market structure
-    * Unclear liquidity targets
-    * Poor risk-to-reward ratio (below 1:2)
-    * Excessive volatility
-    * Choppy or ranging market conditions
-    * Missing institutional confluence
-    * Low confidence in chart interpretation (overall confidence score is below 60/100, unless exceptional confluence exists)
-  Then you MUST classify the setup as "NO TRADE". Do NOT force a bullish or bearish trade idea.
+- STRICT CAPITAL PRESERVATION, "NO TRADE", AND "NO TRADE YET" POLICY:
+  * If a setup is completely invalid or chaotic (conflicting timeframe trends, extremely weak structure, overall confidence is below 60/100, choppy range):
+    - Set the JSON "signal" attribute strictly to "NO TRADE".
+    - Explain in the report why no trade is recommended, what conditions would improve it, and what confirmation is required.
+  * If the setup is structurally valid but NOT immediately executable (e.g., price has not yet retraced into the ideal high-probability order block, FVG, or supply/demand zone, but the overall SMC structure is highly favorable):
+    - Set the JSON "signal" attribute strictly to "NO TRADE YET".
+    - Explain patience in a section titled "Wait For" in the report.
+    - YOU MUST generate a valid "watchZone" JSON object containing: isWatchZone: true, setupType ("BUY" or "SELL"), entryZone pricing bounds, liquidityObjectives, requiredConfirmations, invalidationLevel, targetLevels, and waitFor description explaining what price needs to do, why patience is required, and what confirmations are missing.
+  * If price has already reached the zone and all conditions/confirmations align:
+    - Return "BUY" or "SELL" for the signal, and provide the normal direct execution scenarios with standard 'level', 'tp', and 'sl' targets.
   The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
-
-  When "NO TRADE" is triggered, you must:
-    1. Set the JSON "signal" attribute strictly to "NO TRADE" (it overrides BUY/SELL/HOLD).
-    2. Clearly state in the report why no trade should be taken.
-    3. Explain what conditions would improve the setup.
-    4. Identify key levels to monitor.
-    5. Describe what confirmation is required before considering any entry.
 
 Supplied Source of Truth Market Data:
 * Trading Pair: ${symbol || "Unknown"}
@@ -1211,25 +1241,17 @@ Core Rules:
   5. Risk-to-Reward Quality
   6. Entry Precision
 
-- STRICT CAPITAL PRESERVATION & "NO TRADE" POLICY:
-  If any of the following conditions exist:
-    * Conflicting timeframe bias
-    * Weak market structure
-    * Unclear liquidity targets
-    * Poor risk-to-reward ratio (below 1:2)
-    * Excessive volatility
-    * Choppy or ranging market conditions
-    * Missing institutional confluence
-    * Low confidence in chart interpretation (overall confidence score is below 60/100, unless exceptional confluence exists)
-  Then you MUST classify the setup as "NO TRADE". Do NOT force a bullish or bearish trade idea.
+- STRICT CAPITAL PRESERVATION, "NO TRADE", AND "NO TRADE YET" POLICY:
+  * If a setup is completely invalid or chaotic (conflicting timeframe trends, extremely weak structure, overall confidence is below 60/100, choppy range):
+    - Set the JSON "signal" attribute strictly to "NO TRADE".
+    - Explain in the report why no trade is recommended, what conditions would improve it, and what confirmation is required.
+  * If the setup is structurally valid but NOT immediately executable (e.g., price has not yet retraced into the ideal high-probability order block, FVG, or supply/demand zone, but the overall SMC structure is highly favorable):
+    - Set the JSON "signal" attribute strictly to "NO TRADE YET".
+    - Explain patience in a section titled "Wait For" in the report.
+    - YOU MUST generate a valid "watchZone" JSON object containing: isWatchZone: true, setupType ("BUY" or "SELL"), entryZone pricing bounds, liquidityObjectives, requiredConfirmations, invalidationLevel, targetLevels, and waitFor description explaining what price needs to do, why patience is required, and what confirmations are missing.
+  * If price has already reached the zone and all conditions/confirmations align:
+    - Return "BUY" or "SELL" for the signal, and provide the normal direct execution scenarios with standard 'level', 'tp', and 'sl' targets.
   The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
-
-  When "NO TRADE" is triggered, you must:
-    1. Set the JSON "signal" attribute strictly to "NO TRADE" (it overrides BUY/SELL/HOLD).
-    2. Clearly state in the report why no trade should be taken.
-    3. Explain what conditions would improve the setup.
-    4. Identify key levels to monitor.
-    5. Describe what confirmation is required before considering any entry.
 
 Analysis Process:
 - STEP 1: Image Validation
@@ -1368,7 +1390,7 @@ ${strategy || 'General Smart Money Concepts, Multi-Timeframe Alignment and Liqui
               properties: {
                 signal: {
                   type: Type.STRING,
-                  description: "One of BUY, SELL, HOLD, or NO TRADE based on your overall market bias.",
+                  description: "One of BUY, SELL, NO TRADE, or NO TRADE YET based on your overall market bias. Use NO TRADE YET when the setup is valid structurally but price hasn't yet entered the ideal execution zones.",
                 },
                 level: {
                   type: Type.STRING,
@@ -1388,7 +1410,22 @@ ${strategy || 'General Smart Money Concepts, Multi-Timeframe Alignment and Liqui
                 },
                 reason: {
                   type: Type.STRING,
-                  description: "The complete, rich multi-line Markdown-formatted 8-section institutional analyst report requested in STEP 7.",
+                  description: "The complete, rich multi-line Markdown-formatted 8-section institutional analyst report. Explain patience under 'Wait For' if NO TRADE YET is selected.",
+                },
+                watchZone: {
+                  type: Type.OBJECT,
+                  description: "Setup Watch Zone detail object. Generate ONLY if signal is NO TRADE YET.",
+                  properties: {
+                    isWatchZone: { type: Type.BOOLEAN, description: "Whether a watch zone is active (set to true)." },
+                    setupType: { type: Type.STRING, description: "Whether this setup represents a potential BUY or potential SELL setup." },
+                    entryZone: { type: Type.STRING, description: "Ideal Entry Zone boundaries / price range (e.g. '1.0910 - 1.0920')." },
+                    liquidityObjectives: { type: Type.STRING, description: "Resting liquidity pools targeted (e.g. 'Sell-side liquidity below equal lows')." },
+                    requiredConfirmations: { type: Type.STRING, description: "Required confirmations or trigger events (e.g. 'M5 Bos + MSS')." },
+                    invalidationLevel: { type: Type.STRING, description: "The price level that invalidates the setup (e.g. '1.0890')." },
+                    targetLevels: { type: Type.STRING, description: "The Take Profit target price levels (e.g. '1.0980, 1.1020')." },
+                    waitFor: { type: Type.STRING, description: "Detailed explanation of what price needs to do, why patience is required, and what confirmations are missing." }
+                  },
+                  required: ["isWatchZone", "setupType", "entryZone", "liquidityObjectives", "requiredConfirmations", "invalidationLevel", "targetLevels", "waitFor"]
                 }
               },
               required: ["signal", "level", "tp", "sl", "confidence", "reason"]

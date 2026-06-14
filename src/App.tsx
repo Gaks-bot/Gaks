@@ -50,6 +50,7 @@ interface WatchlistSetup {
   conditionsRequired: string;
   strategyUsed: string;
   createdAt: string;
+  watchZone?: WatchZone;
 }
 
 interface InstitutionalAlert {
@@ -70,6 +71,17 @@ interface InstitutionalAlert {
   rawFormattedAlert?: string;
 }
 
+interface WatchZone {
+  isWatchZone: boolean;
+  setupType: string;
+  entryZone: string;
+  liquidityObjectives: string;
+  requiredConfirmations: string;
+  invalidationLevel: string;
+  targetLevels: string;
+  waitFor: string;
+}
+
 interface AnalysisReport {
   signal: string;
   level: string;
@@ -77,6 +89,7 @@ interface AnalysisReport {
   sl: string;
   confidence: string;
   reason: string;
+  watchZone?: WatchZone;
 }
 
 interface AnalysisHistoryItem {
@@ -1725,25 +1738,17 @@ Core Rules - Live Market Analysis:
   5. Risk-to-Reward Quality
   6. Entry Precision
 
-- STRICT CAPITAL PRESERVATION & "NO TRADE" POLICY:
-  If any of the following conditions exist:
-    * Conflicting timeframe bias
-    * Weak market structure
-    * Unclear liquidity targets
-    * Poor risk-to-reward ratio (below 1:2)
-    * Excessive volatility
-    * Choppy or ranging market conditions
-    * Missing institutional confluence
-    * Low confidence in chart interpretation (overall confidence score is below 60/100, unless exceptional confluence exists)
-  Then you MUST classify the setup as "NO TRADE". Do NOT force a bullish or bearish trade idea.
+- STRICT CAPITAL PRESERVATION, "NO TRADE", AND "NO TRADE YET" POLICY:
+  * If a setup is completely invalid or chaotic (conflicting timeframe trends, extremely weak structure, overall confidence is below 60/100, choppy range):
+    - Set the JSON "signal" attribute strictly to "NO TRADE".
+    - Explain in the report why no trade is recommended, what conditions would improve it, and what confirmation is required.
+  * If the setup is structurally valid but NOT immediately executable (e.g., price has not yet retraced into the ideal high-probability order block, FVG, or supply/demand zone, but the overall SMC structure is highly favorable):
+    - Set the JSON "signal" attribute strictly to "NO TRADE YET".
+    - Explain patience in a section titled "Wait For" in the report explaining what price needs to do, why patience is required, and what confirmations are missing.
+    - YOU MUST generate a valid "watchZone" JSON object containing: isWatchZone: true, setupType ("BUY" or "SELL"), entryZone pricing bounds, liquidityObjectives, requiredConfirmations, invalidationLevel, targetLevels, and waitFor description explaining what price needs to do, why patience is required, and what confirmations are missing.
+  * If price has already reached the zone and all conditions/confirmations align:
+    - Return "BUY" or "SELL" for the signal, and provide the normal direct execution scenarios with standard 'level', 'tp', and 'sl' targets.
   The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
-
-  When "NO TRADE" is triggered, you must:
-  1. Set the JSON "signal" attribute strictly to "NO TRADE" (it overrides BUY/SELL/HOLD).
-  2. Clearly state in the report why no trade should be taken.
-  3. Explain what conditions would improve the setup.
-  4. Identify key levels to monitor.
-  5. Describe what confirmation is required before considering any entry.
 
 Supplied Source of Truth Market Data:
 * Trading Pair: ${detectedSymbol || "Unknown"}
@@ -1858,25 +1863,17 @@ Core Rules:
   5. Risk-to-Reward Quality
   6. Entry Precision
 
-- STRICT CAPITAL PRESERVATION & "NO TRADE" POLICY:
-  If any of the following conditions exist:
-    * Conflicting timeframe bias
-    * Weak market structure
-    * Unclear liquidity targets
-    * Poor risk-to-reward ratio (below 1:2)
-    * Excessive volatility
-    * Choppy or ranging market conditions
-    * Missing institutional confluence
-    * Low confidence in chart interpretation (overall confidence score is below 60/100, unless exceptional confluence exists)
-  Then you MUST classify the setup as "NO TRADE". Do NOT force a bullish or bearish trade idea.
+- STRICT CAPITAL PRESERVATION, "NO TRADE", AND "NO TRADE YET" POLICY:
+  * If a setup is completely invalid or chaotic (conflicting timeframe trends, extremely weak structure, overall confidence is below 60/100, choppy range):
+    - Set the JSON "signal" attribute strictly to "NO TRADE".
+    - Explain in the report why no trade is recommended, what conditions would improve it, and what confirmation is required.
+  * If the setup is structurally valid but NOT immediately executable (e.g., price has not yet retraced into the ideal high-probability order block, FVG, or supply/demand zone, but the overall SMC structure is highly favorable):
+    - Set the JSON "signal" attribute strictly to "NO TRADE YET".
+    - Explain patience in a section titled "Wait For" in the report explaining what price needs to do, why patience is required, and what confirmations are missing.
+    - YOU MUST generate a valid "watchZone" JSON object containing: isWatchZone: true, setupType ("BUY" or "SELL"), entryZone pricing bounds, liquidityObjectives, requiredConfirmations, invalidationLevel, targetLevels, and waitFor description explaining what price needs to do, why patience is required, and what confirmations are missing.
+  * If price has already reached the zone and all conditions/confirmations align:
+    - Return "BUY" or "SELL" for the signal, and provide the normal direct execution scenarios with standard 'level', 'tp', and 'sl' targets.
   The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
-
-  When "NO TRADE" is triggered, you must:
-  1. Set the JSON "signal" attribute strictly to "NO TRADE" (it overrides BUY/SELL/HOLD).
-  2. Clearly state in the report why no trade should be taken.
-  3. Explain what conditions would improve the setup.
-  4. Identify key levels to monitor.
-  5. Describe what confirmation is required before considering any entry.
 
 Analysis Process:
 - STEP 1: Image Validation
@@ -1952,12 +1949,27 @@ ${compositePrompt}
               responseSchema: {
                 type: "OBJECT",
                 properties: {
-                  signal: { type: "STRING" },
-                  level: { type: "STRING" },
-                  tp: { type: "STRING" },
-                  sl: { type: "STRING" },
-                  confidence: { type: "STRING" },
-                  reason: { type: "STRING" }
+                  signal: { type: "STRING", description: "One of BUY, SELL, NO TRADE, or NO TRADE YET based on market bias." },
+                  level: { type: "STRING", description: "Estimated entry price level (e.g., '1.0924')." },
+                  tp: { type: "STRING", description: "Take profit point." },
+                  sl: { type: "STRING", description: "Stop loss point." },
+                  confidence: { type: "STRING", description: "Confidence score, e.g. 85%." },
+                  reason: { type: "STRING", description: "The complete multi-line analyst report. If signal is NO TRADE YET, must include detailed section 'Wait For'." },
+                  watchZone: {
+                    type: "OBJECT",
+                    description: "Watch Zone details if signal is NO TRADE YET.",
+                    properties: {
+                      isWatchZone: { type: "BOOLEAN" },
+                      setupType: { type: "STRING" },
+                      entryZone: { type: "STRING" },
+                      liquidityObjectives: { type: "STRING" },
+                      requiredConfirmations: { type: "STRING" },
+                      invalidationLevel: { type: "STRING" },
+                      targetLevels: { type: "STRING" },
+                      waitFor: { type: "STRING" }
+                    },
+                    required: ["isWatchZone", "setupType", "entryZone", "liquidityObjectives", "requiredConfirmations", "invalidationLevel", "targetLevels", "waitFor"]
+                  }
                 },
                 required: ["signal", "level", "tp", "sl", "confidence", "reason"]
               }
@@ -2057,7 +2069,17 @@ ${compositePrompt}
         tp: String(parsedReport.tp || (1.1925).toFixed(4)),
         sl: String(parsedReport.sl || (1.1655).toFixed(4)),
         confidence: String(parsedReport.confidence || "85%"),
-        reason: String(parsedReport.reason || "Local model response parsed successfully matching chosen guidelines.")
+        reason: String(parsedReport.reason || "Local model response parsed successfully matching chosen guidelines."),
+        watchZone: parsedReport.watchZone ? {
+          isWatchZone: !!parsedReport.watchZone.isWatchZone,
+          setupType: String(parsedReport.watchZone.setupType || "N/A"),
+          entryZone: String(parsedReport.watchZone.entryZone || "N/A"),
+          liquidityObjectives: String(parsedReport.watchZone.liquidityObjectives || "N/A"),
+          requiredConfirmations: String(parsedReport.watchZone.requiredConfirmations || "N/A"),
+          invalidationLevel: String(parsedReport.watchZone.invalidationLevel || "N/A"),
+          targetLevels: String(parsedReport.watchZone.targetLevels || "N/A"),
+          waitFor: String(parsedReport.watchZone.waitFor || "N/A")
+        } : undefined
       };
 
       setAnalysisReport(finalReport);
@@ -2186,13 +2208,31 @@ ${compositePrompt}
   useEffect(() => {
     if (analysisReport && analysisReport.signal !== "FAILED") {
       setCustomScore(getPreEstimatedGrade(analysisReport.confidence));
-      setCustomKeyLevels(`Trigger Level: ${analysisReport.level} | TP: ${analysisReport.tp} | SL: ${analysisReport.sl}`);
-      setCustomRequiredConditions(getPresetEntryCondition(selectedStrategy));
       
-      // Auto-sync interactive MT5 compliance levels
-      setAdjustedEntry(analysisReport.level || "");
-      setAdjustedTp(analysisReport.tp || "");
-      setAdjustedSl(analysisReport.sl || "");
+      if (analysisReport.signal === "NO TRADE YET" && analysisReport.watchZone) {
+        setCustomKeyLevels(`Entry Zone: ${analysisReport.watchZone.entryZone} | Invalidation: ${analysisReport.watchZone.invalidationLevel}`);
+        setCustomRequiredConditions(`Confirmations: ${analysisReport.watchZone.requiredConfirmations}. Wait For: ${analysisReport.watchZone.waitFor}`);
+        
+        // Use average bound of Entry Zone as entry placeholder, with inval and first target
+        const bounds = analysisReport.watchZone.entryZone.split("-").map(v => parseFloat(v));
+        const avgEntry = bounds.length === 2 && !isNaN(bounds[0]) && !isNaN(bounds[1]) ? ((bounds[0] + bounds[1]) / 2).toString() : analysisReport.level;
+        const mainTarget = analysisReport.watchZone.targetLevels.split(",")[0].trim();
+        
+        setAdjustedEntry(avgEntry);
+        setAdjustedTp(mainTarget || analysisReport.tp);
+        setAdjustedSl(analysisReport.watchZone.invalidationLevel || analysisReport.sl);
+        
+        // Auto-select "Trigger Level Reached" alert types
+        setSelectedAlertTypes(["Trigger Level Reached"]);
+      } else {
+        setCustomKeyLevels(`Trigger Level: ${analysisReport.level} | TP: ${analysisReport.tp} | SL: ${analysisReport.sl}`);
+        setCustomRequiredConditions(getPresetEntryCondition(selectedStrategy));
+        
+        // Auto-sync interactive MT5 compliance levels
+        setAdjustedEntry(analysisReport.level || "");
+        setAdjustedTp(analysisReport.tp || "");
+        setAdjustedSl(analysisReport.sl || "");
+      }
     } else {
       setAdjustedEntry("");
       setAdjustedTp("");
@@ -2235,7 +2275,8 @@ ${compositePrompt}
       keyLevels: customKeyLevels || `Trigger: ${analysisReport.level} | TP: ${analysisReport.tp} | SL: ${analysisReport.sl}`,
       conditionsRequired: customRequiredConditions || "Price structural re-evaluation and confirmation inside the designated zone.",
       strategyUsed: selectedStrategy.split("\n")[0] || "Custom Strategy",
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " - " + new Date().toLocaleDateString([], { month: 'short', day: 'numeric' })
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " - " + new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      watchZone: analysisReport.watchZone
     };
 
     const newAlert: InstitutionalAlert = {
@@ -3528,6 +3569,8 @@ Risk Reminder: ${riskReminder}`;
                         ? "bg-transparent text-white border border-white/40"
                         : analysisReport.signal === "NO TRADE" || analysisReport.signal === "NO_TRADE"
                         ? "bg-white/5 text-white/70 border border-white/10"
+                        : analysisReport.signal === "NO TRADE YET"
+                        ? "bg-amber-500 text-black border border-amber-500 shadow-md shadow-amber-500/10"
                         : analysisReport.signal === "FAILED"
                         ? "bg-white/5 text-white/40 border border-white/10"
                         : "bg-white/10 text-white"
@@ -3637,6 +3680,88 @@ Risk Reminder: ${riskReminder}`;
 
                 return (
                   <div className="space-y-3.5 pt-1 animate-fadeIn">
+                    {analysisReport.signal === "NO TRADE YET" && analysisReport.watchZone && (
+                      <div className="border border-amber-500/25 bg-amber-500/5 rounded-xl p-4.5 space-y-4 text-left font-sans animate-fadeIn">
+                        <div className="flex items-center justify-between border-b border-amber-500/20 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                            </span>
+                            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-500">
+                              ACTIVE SETUP WATCH ZONE
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-mono font-black border border-amber-500/30 px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 uppercase">
+                              {analysisReport.watchZone.setupType} setup
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Top Boundaries row */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          <div className="border border-white/5 bg-white/[0.02] p-2.5 rounded-lg col-span-2 md:col-span-1">
+                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Ideal Entry Zone</span>
+                            <span className="text-sm font-black text-amber-400 font-mono tracking-tight">
+                              {analysisReport.watchZone.entryZone}
+                            </span>
+                          </div>
+                          <div className="border border-white/5 bg-white/[0.02] p-2.5 rounded-lg">
+                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Invalidation Level</span>
+                            <span className="text-xs font-bold text-white/80 font-mono">
+                              {analysisReport.watchZone.invalidationLevel}
+                            </span>
+                          </div>
+                          <div className="border border-white/5 bg-white/[0.02] p-2.5 rounded-lg">
+                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Take Profit Objectives</span>
+                            <span className="text-xs font-bold text-white/80 font-mono">
+                              {analysisReport.watchZone.targetLevels}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Liquidity targets and Confirmations */}
+                        <div className="space-y-2 text-xs">
+                          <div>
+                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Liquidity Objectives</span>
+                            <p className="text-[11px] text-white/85 font-medium leading-relaxed font-sans pl-1.5 border-l border-white/10">
+                              {analysisReport.watchZone.liquidityObjectives}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Required Confirmation Triggers</span>
+                            <p className="text-[11px] text-white/85 font-medium leading-relaxed font-sans pl-1.5 border-l border-white/10">
+                              {analysisReport.watchZone.requiredConfirmations}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Wait For Callout Box */}
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-amber-400">
+                            <i className="ph ph-hourglass-high text-xs font-bold animate-pulse" />
+                            <span className="text-xs font-bold font-mono uppercase tracking-wider">WAIT For Scenario Validation</span>
+                          </div>
+                          <p className="text-xs text-white/95 font-medium leading-relaxed">
+                            {analysisReport.watchZone.waitFor}
+                          </p>
+                        </div>
+                        
+                        {/* Auto Generate alert action button for 1-click */}
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={handleCreateInstitutionalAlert}
+                            className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold text-xs py-2 rounded-lg transition-all shadow-md shadow-amber-500/10 hover:shadow-amber-500/20 cursor-pointer flex items-center justify-center gap-1.5 animate-pulse"
+                          >
+                            <i className="ph ph-bell text-sm" />
+                            <span>🚨 Save Setup Watch Zone Alert (Automatic Monitor)</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Raw original AI findings */}
                     <div className="grid grid-cols-3 gap-2 font-mono text-xs text-neutral-400">
                       <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
@@ -4535,6 +4660,33 @@ Risk Reminder: ${riskReminder}`;
                           <span className="text-[11px] font-bold font-mono text-white/70 truncate">{matchingAlert?.alertTypes?.slice(0, 1)?.[0] || 'Trigger'}</span>
                         </div>
                       </div>
+
+                      {setup.watchZone && (
+                        <div className="mb-3 mt-2 bg-amber-500/5 border border-amber-500/15 p-3 rounded-lg text-left space-y-2 font-sans animate-fadeIn">
+                          <div className="flex items-center gap-1.5 text-amber-400">
+                            <i className="ph ph-hourglass-high text-xs font-bold animate-pulse" />
+                            <span className="text-[9px] font-mono font-bold uppercase tracking-wider">Saved Watch Zone Details</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                            <div>
+                              <strong className="text-white/40 font-mono block text-[8px] uppercase">Ideal Entry Zone:</strong>
+                              <span className="text-amber-400 font-bold font-mono">{setup.watchZone.entryZone}</span>
+                            </div>
+                            <div>
+                              <strong className="text-white/40 font-mono block text-[8px] uppercase">Invalidation Level:</strong>
+                              <span className="text-white/80 font-mono">{setup.watchZone.invalidationLevel}</span>
+                            </div>
+                          </div>
+                          <div className="text-[10px]">
+                            <strong className="text-white/40 font-mono block text-[8px] uppercase">Confirmations Required:</strong>
+                            <p className="text-white/90 leading-relaxed m-0">{setup.watchZone.requiredConfirmations}</p>
+                          </div>
+                          <div className="text-[10px] pt-1 border-t border-white/5">
+                            <strong className="text-amber-400/70 font-mono block text-[8px] uppercase">Wait For Trigger Action:</strong>
+                            <p className="text-white font-medium leading-relaxed m-0">{setup.watchZone.waitFor}</p>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-1.5 text-[11px] text-white/70 leading-relaxed font-sans pb-3 border-b border-white/10">
                         <div>
