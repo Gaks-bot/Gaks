@@ -100,6 +100,22 @@ interface AnalysisHistoryItem {
   report: AnalysisReport;
 }
 
+const getPipMultiplier = (pairStr: string) => {
+  const p = (pairStr || "EURUSD").toUpperCase();
+  if (p.includes("JPY")) return 0.01;
+  if (p.includes("XAU") || p.includes("GOLD") || p.includes("XAG")) return 0.1;
+  if (p.includes("BTC") || p.includes("ETH") || p.includes("SOL") || p.includes("USOIL") || p.includes("OIL")) return 1.0;
+  return 0.0001;
+};
+
+const getPipPrecision = (pairStr: string) => {
+  const p = (pairStr || "EURUSD").toUpperCase();
+  if (p.includes("JPY")) return 3;
+  if (p.includes("XAU") || p.includes("GOLD") || p.includes("XAG")) return 2;
+  if (p.includes("BTC") || p.includes("ETH") || p.includes("SOL")) return 2;
+  return 5;
+};
+
 // Full list of 20 Strategies from index-D5V-iQRb.js references
 const STRATEGIES_LIST = [
   `Supply & Demand / Smart Money Concepts (SMC) Strategy
@@ -1721,6 +1737,15 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
             : "Analyzing visual candle dynamics and strategy rules directly via Gemini..."
         ]);
 
+        const userRiskComplianceString = riskSettings ? `
+STRICT USER RISK SETTINGS COMPLIANCE (MANDATORY):
+- Current Account Capital Size: $${riskSettings.accountSize}
+- Preferred Risk-to-Reward Ratio: 1:${riskSettings.preferredRr}
+- Allowed Risk per trade: ${riskSettings.riskPercent}%
+- Take Profit level ("tp") MUST be placed at a distance such that Take Profit distance is at least ${riskSettings.preferredRr} times the Stop Loss distance from the Entry price level ("level"). (TP distance / SL distance >= ${riskSettings.preferredRr}).
+- All generated levels must strictly satisfy these preferred user account parameters and never conflict or violate minimum stop distances. Ensure they are fully valid and non-reversed to prevent failing MetaTrader checks!
+` : '';
+
         let fullPrompt = "";
         if (isLive) {
           fullPrompt = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
@@ -1738,17 +1763,46 @@ Core Rules - Live Market Analysis:
   5. Risk-to-Reward Quality
   6. Entry Precision
 
-- STRICT CAPITAL PRESERVATION, "NO TRADE", AND "NO TRADE YET" POLICY:
-  * If a setup is completely invalid or chaotic (conflicting timeframe trends, extremely weak structure, overall confidence is below 60/100, choppy range):
-    - Set the JSON "signal" attribute strictly to "NO TRADE".
-    - Explain in the report why no trade is recommended, what conditions would improve it, and what confirmation is required.
-  * If the setup is structurally valid but NOT immediately executable (e.g., price has not yet retraced into the ideal high-probability order block, FVG, or supply/demand zone, but the overall SMC structure is highly favorable):
-    - Set the JSON "signal" attribute strictly to "NO TRADE YET".
-    - Explain patience in a section titled "Wait For" in the report explaining what price needs to do, why patience is required, and what confirmations are missing.
-    - YOU MUST generate a valid "watchZone" JSON object containing: isWatchZone: true, setupType ("BUY" or "SELL"), entryZone pricing bounds, liquidityObjectives, requiredConfirmations, invalidationLevel, targetLevels, and waitFor description explaining what price needs to do, why patience is required, and what confirmations are missing.
-  * If price has already reached the zone and all conditions/confirmations align:
-    - Return "BUY" or "SELL" for the signal, and provide the normal direct execution scenarios with standard 'level', 'tp', and 'sl' targets.
-  The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
+- INSTITUTIONAL DECISION FRAMEWORK POLICY (CRITICAL EXECUTION RULE):
+  * Do not classify a setup as BUY SETUP or SELL SETUP merely because a directional bias exists.
+  * You MUST classify the market into one and only one of these three distinct states:
+    1. BUY SETUP (🟢): Use only when ALL of the following conditions are strictly satisfied:
+       - Bullish market narrative exists.
+       - User strategy conditions are satisfied.
+       - Required confirmations are complete.
+       - Risk-to-reward requirements are acceptable.
+       - CURRENT PRICE is inside or has entered the identified BUY ENTRY ZONE.
+       If any of the above are NOT true, or the CURRENT PRICE has not reached the BUY ENTRY ZONE yet:
+       - DO NOT generate: Entry, Stop Loss, Take Profit, BUY SETUP status.
+       - Instead, classify as "NO TRADE SETUP".
+       - Set JSON "signal" strictly to "NO TRADE SETUP". Status will be: NO TRADE SETUP.
+    2. SELL SETUP (🔴): Use only when ALL of the following conditions are strictly satisfied:
+       - Bearish narrative exists.
+       - User strategy conditions are satisfied.
+       - Required confirmations are complete.
+       - Risk-to-reward requirements are acceptable.
+       - CURRENT PRICE is inside or has entered the identified SELL ENTRY ZONE.
+       If any of the above are NOT true, or the CURRENT PRICE has not reached the SELL ENTRY ZONE yet:
+       - DO NOT generate: Entry, Stop Loss, Take Profit, SELL SETUP status.
+       - Instead, classify as "NO TRADE SETUP".
+       - Set JSON "signal" strictly to "NO TRADE SETUP". Status will be: NO TRADE SETUP.
+    3. NO TRADE SETUP (⚪): Use when:
+       - The market genuinely offers no tradable edge (choppy price action, major news uncertainty, no clear market structure, conflicting HTFs, poor RR, or doesn't align with strategy), OR
+       - A directional bias (bullish/bearish setup) exists, but CURRENT PRICE has NOT yet reached or entered the identified entry zone.
+       If a setup exists but price has not reached the entry zone, you must strictly return:
+       - Signal: "NO TRADE SETUP"
+       - Set JSON level, tp, and sl fields to "N/A".
+       - In your Markdown "reason" field, include:
+         * Reason: "A bullish setup exists, but price has not yet reached the ideal execution area." (or "A bearish setup exists, but price has not yet reached the ideal execution area.")
+         * Wait For: [Explain clearly what price needs to do before the setup becomes valid.]
+         * Recommended Action: "Do not enter early. Wait for price to reach the planned entry area and reassess."
+       - Professional Note: "Not trading is a valid decision when the market provides no measurable edge. Preserving capital takes priority over identifying opportunities."
+
+  The final report must conclude with one and only one outcome at the very end of your "reason" field on its own separate line:
+  🟢 BUY SETUP
+  🔴 SELL SETUP
+  ⚪ NO TRADE SETUP
+  The absolute objective is capital preservation, not constant market participation. Never provide Entry, Stop Loss, or Take Profit levels for a setup that cannot be executed immediately at the current market price. Protect users from entering trades prematurely. Preserving capital takes priority over identifying opportunities.
 
 Supplied Source of Truth Market Data:
 * Trading Pair: ${detectedSymbol || "Unknown"}
@@ -1846,7 +1900,8 @@ STRICT MT5-COMPLIANT LEVEL RULES (CRITICAL):
 Supplied User Trade Logic Guidelines & Strategy context:
 """
 ${compositePrompt}
-"""`;
+"""
+${userRiskComplianceString}`;
         } else {
           fullPrompt = `You are an Institutional Trading Analyst with 15+ years of experience at a top-tier hedge fund and you specialise in multi-timeframe institutional analysis.
 
@@ -1863,17 +1918,46 @@ Core Rules:
   5. Risk-to-Reward Quality
   6. Entry Precision
 
-- STRICT CAPITAL PRESERVATION, "NO TRADE", AND "NO TRADE YET" POLICY:
-  * If a setup is completely invalid or chaotic (conflicting timeframe trends, extremely weak structure, overall confidence is below 60/100, choppy range):
-    - Set the JSON "signal" attribute strictly to "NO TRADE".
-    - Explain in the report why no trade is recommended, what conditions would improve it, and what confirmation is required.
-  * If the setup is structurally valid but NOT immediately executable (e.g., price has not yet retraced into the ideal high-probability order block, FVG, or supply/demand zone, but the overall SMC structure is highly favorable):
-    - Set the JSON "signal" attribute strictly to "NO TRADE YET".
-    - Explain patience in a section titled "Wait For" in the report explaining what price needs to do, why patience is required, and what confirmations are missing.
-    - YOU MUST generate a valid "watchZone" JSON object containing: isWatchZone: true, setupType ("BUY" or "SELL"), entryZone pricing bounds, liquidityObjectives, requiredConfirmations, invalidationLevel, targetLevels, and waitFor description explaining what price needs to do, why patience is required, and what confirmations are missing.
-  * If price has already reached the zone and all conditions/confirmations align:
-    - Return "BUY" or "SELL" for the signal, and provide the normal direct execution scenarios with standard 'level', 'tp', and 'sl' targets.
-  The absolute objective is capital preservation, not constant market participation. Professional traders are paid for patience, not activity!
+- INSTITUTIONAL DECISION FRAMEWORK POLICY (CRITICAL EXECUTION RULE):
+  * Do not classify a setup as BUY SETUP or SELL SETUP merely because a directional bias exists.
+  * You MUST classify the market into one and only one of these three distinct states:
+    1. BUY SETUP (🟢): Use only when ALL of the following conditions are strictly satisfied:
+       - Bullish market narrative exists.
+       - User strategy conditions are satisfied.
+       - Required confirmations are complete.
+       - Risk-to-reward requirements are acceptable.
+       - CURRENT PRICE is inside or has entered the identified BUY ENTRY ZONE.
+       If any of the above are NOT true, or the CURRENT PRICE has not reached the BUY ENTRY ZONE yet:
+       - DO NOT generate: Entry, Stop Loss, Take Profit, BUY SETUP status.
+       - Instead, classify as "NO TRADE SETUP".
+       - Set JSON "signal" strictly to "NO TRADE SETUP". Status will be: NO TRADE SETUP.
+    2. SELL SETUP (🔴): Use only when ALL of the following conditions are strictly satisfied:
+       - Bearish narrative exists.
+       - User strategy conditions are satisfied.
+       - Required confirmations are complete.
+       - Risk-to-reward requirements are acceptable.
+       - CURRENT PRICE is inside or has entered the identified SELL ENTRY ZONE.
+       If any of the above are NOT true, or the CURRENT PRICE has not reached the SELL ENTRY ZONE yet:
+       - DO NOT generate: Entry, Stop Loss, Take Profit, SELL SETUP status.
+       - Instead, classify as "NO TRADE SETUP".
+       - Set JSON "signal" strictly to "NO TRADE SETUP". Status will be: NO TRADE SETUP.
+    3. NO TRADE SETUP (⚪): Use when:
+       - The market genuinely offers no tradable edge (choppy price action, major news uncertainty, no clear market structure, conflicting HTFs, poor RR, or doesn't align with strategy), OR
+       - A directional bias (bullish/bearish setup) exists, but CURRENT PRICE has NOT yet reached or entered the identified entry zone.
+       If a setup exists but price has not reached the entry zone, you must strictly return:
+       - Signal: "NO TRADE SETUP"
+       - Set JSON level, tp, and sl fields to "N/A".
+       - In your Markdown "reason" field, include:
+         * Reason: "A bullish setup exists, but price has not yet reached the ideal execution area." (or "A bearish setup exists, but price has not yet reached the ideal execution area.")
+         * Wait For: [Explain clearly what price needs to do before the setup becomes valid.]
+         * Recommended Action: "Do not enter early. Wait for price to reach the planned entry area and reassess."
+       - Professional Note: "Not trading is a valid decision when the market provides no measurable edge. Preserving capital takes priority over identifying opportunities."
+
+  The final report must conclude with one and only one outcome at the very end of your "reason" field on its own separate line:
+  🟢 BUY SETUP
+  🔴 SELL SETUP
+  ⚪ NO TRADE SETUP
+  The absolute objective is capital preservation, not constant market participation. Never provide Entry, Stop Loss, or Take Profit levels for a setup that cannot be executed immediately at the current market price. Protect users from entering trades prematurely. Preserving capital takes priority over identifying opportunities.
 
 Analysis Process:
 - STEP 1: Image Validation
@@ -1917,7 +2001,8 @@ STRICT MT5-COMPLIANT LEVEL RULES (CRITICAL):
 Supplied User Trade Logic Guidelines & Strategy context:
 """
 ${compositePrompt}
-"""`;
+"""
+${userRiskComplianceString}`;
         }
 
         const fallbackStartTime = Date.now();
@@ -1949,27 +2034,12 @@ ${compositePrompt}
               responseSchema: {
                 type: "OBJECT",
                 properties: {
-                  signal: { type: "STRING", description: "One of BUY, SELL, NO TRADE, or NO TRADE YET based on market bias." },
-                  level: { type: "STRING", description: "Estimated entry price level (e.g., '1.0924')." },
-                  tp: { type: "STRING", description: "Take profit point." },
-                  sl: { type: "STRING", description: "Stop loss point." },
+                  signal: { type: "STRING", description: "Strictly one of BUY SETUP, SELL SETUP, or NO TRADE SETUP based on market bias." },
+                  level: { type: "STRING", description: "Estimated entry price level (e.g., '1.0924') or 'N/A' if NO TRADE SETUP." },
+                  tp: { type: "STRING", description: "Take profit point or 'N/A' if NO TRADE SETUP." },
+                  sl: { type: "STRING", description: "Stop loss point or 'N/A' if NO TRADE SETUP." },
                   confidence: { type: "STRING", description: "Confidence score, e.g. 85%." },
-                  reason: { type: "STRING", description: "The complete multi-line analyst report. If signal is NO TRADE YET, must include detailed section 'Wait For'." },
-                  watchZone: {
-                    type: "OBJECT",
-                    description: "Watch Zone details if signal is NO TRADE YET.",
-                    properties: {
-                      isWatchZone: { type: "BOOLEAN" },
-                      setupType: { type: "STRING" },
-                      entryZone: { type: "STRING" },
-                      liquidityObjectives: { type: "STRING" },
-                      requiredConfirmations: { type: "STRING" },
-                      invalidationLevel: { type: "STRING" },
-                      targetLevels: { type: "STRING" },
-                      waitFor: { type: "STRING" }
-                    },
-                    required: ["isWatchZone", "setupType", "entryZone", "liquidityObjectives", "requiredConfirmations", "invalidationLevel", "targetLevels", "waitFor"]
-                  }
+                  reason: { type: "STRING", description: "The complete multi-line analyst report. Report MUST conclude at the very end with a line containing strictly one of these outcome outcomes: 🟢 BUY SETUP, 🔴 SELL SETUP, or ⚪ NO TRADE SETUP." }
                 },
                 required: ["signal", "level", "tp", "sl", "confidence", "reason"]
               }
@@ -2209,29 +2279,66 @@ ${compositePrompt}
     if (analysisReport && analysisReport.signal !== "FAILED") {
       setCustomScore(getPreEstimatedGrade(analysisReport.confidence));
       
-      if (analysisReport.signal === "NO TRADE YET" && analysisReport.watchZone) {
-        setCustomKeyLevels(`Entry Zone: ${analysisReport.watchZone.entryZone} | Invalidation: ${analysisReport.watchZone.invalidationLevel}`);
-        setCustomRequiredConditions(`Confirmations: ${analysisReport.watchZone.requiredConfirmations}. Wait For: ${analysisReport.watchZone.waitFor}`);
+      const sigNormalized = (analysisReport.signal || "").trim().toUpperCase();
+      if (sigNormalized === "NO TRADE SETUP" || sigNormalized === "NEUTRAL" || sigNormalized === "STAND ASIDE" || sigNormalized === "NO TRADE" || sigNormalized === "NO_TRADE" || sigNormalized === "NO TRADE YET") {
+        setCustomKeyLevels("Capital Preservation - Observe key boundaries");
+        setCustomRequiredConditions("Action: Preserve capital. Reassess later when higher timeframe volume trend resumes.");
         
-        // Use average bound of Entry Zone as entry placeholder, with inval and first target
-        const bounds = analysisReport.watchZone.entryZone.split("-").map(v => parseFloat(v));
-        const avgEntry = bounds.length === 2 && !isNaN(bounds[0]) && !isNaN(bounds[1]) ? ((bounds[0] + bounds[1]) / 2).toString() : analysisReport.level;
-        const mainTarget = analysisReport.watchZone.targetLevels.split(",")[0].trim();
+        setAdjustedEntry("N/A");
+        setAdjustedTp("N/A");
+        setAdjustedSl("N/A");
         
-        setAdjustedEntry(avgEntry);
-        setAdjustedTp(mainTarget || analysisReport.tp);
-        setAdjustedSl(analysisReport.watchZone.invalidationLevel || analysisReport.sl);
-        
-        // Auto-select "Trigger Level Reached" alert types
-        setSelectedAlertTypes(["Trigger Level Reached"]);
+        setSelectedAlertTypes(["Daily Session Update"]);
       } else {
         setCustomKeyLevels(`Trigger Level: ${analysisReport.level} | TP: ${analysisReport.tp} | SL: ${analysisReport.sl}`);
         setCustomRequiredConditions(getPresetEntryCondition(selectedStrategy));
         
-        // Auto-sync interactive MT5 compliance levels
-        setAdjustedEntry(analysisReport.level || "");
-        setAdjustedTp(analysisReport.tp || "");
-        setAdjustedSl(analysisReport.sl || "");
+        // Auto-sync interactive MT5 compliance levels with on-the-fly compliance healing
+        const symbolTag = detectedSymbol || "EURUSD";
+        const mult = getPipMultiplier(symbolTag);
+        const prec = getPipPrecision(symbolTag);
+        
+        const nEntry = parseFloat(analysisReport.level);
+        const nTp = parseFloat(analysisReport.tp);
+        const nSl = parseFloat(analysisReport.sl);
+        
+        const isBuy = sigNormalized.includes("BUY");
+        const tpValid = isBuy ? nTp > nEntry : nTp < nEntry;
+        const slValid = isBuy ? nSl < nEntry : nSl > nEntry;
+        const directConflict = isNaN(nEntry) || isNaN(nTp) || isNaN(nSl) || !tpValid || !slValid;
+        
+        const slPipsHex = mult > 0 ? Math.abs(nSl - nEntry) / mult : 0;
+        const tpPipsHex = mult > 0 ? Math.abs(nTp - nEntry) / mult : 0;
+        const slPipsComputed = Math.round(slPipsHex * 10) / 10;
+        const tpPipsComputed = Math.round(tpPipsHex * 10) / 10;
+        const realRr = slPipsComputed > 0 ? (tpPipsComputed / slPipsComputed) : 0;
+        
+        // Determine if levels are invalid or violate user's preferred risk-to-reward parameters
+        const isInvalidOrViolates = directConflict || slPipsComputed < 10 || realRr < (riskSettings.preferredRr - 0.05);
+        
+        if (isInvalidOrViolates && !isNaN(nEntry) && nEntry > 0) {
+          const slDistancePips = 25;
+          const preferredRatio = riskSettings.preferredRr || 2.0;
+          const tpDistancePips = slDistancePips * preferredRatio;
+          if (isBuy) {
+            const freshSl = nEntry - (slDistancePips * mult);
+            const freshTp = nEntry + (tpDistancePips * mult);
+            setAdjustedEntry(nEntry.toFixed(prec));
+            setAdjustedSl(freshSl.toFixed(prec));
+            setAdjustedTp(freshTp.toFixed(prec));
+          } else {
+            const freshSl = nEntry + (slDistancePips * mult);
+            const freshTp = nEntry - (tpDistancePips * mult);
+            setAdjustedEntry(nEntry.toFixed(prec));
+            setAdjustedSl(freshSl.toFixed(prec));
+            setAdjustedTp(freshTp.toFixed(prec));
+          }
+        } else {
+          setAdjustedEntry(analysisReport.level || "");
+          setAdjustedTp(analysisReport.tp || "");
+          setAdjustedSl(analysisReport.sl || "");
+        }
+        setSelectedAlertTypes(["Trigger Level Reached"]);
       }
     } else {
       setAdjustedEntry("");
@@ -3084,9 +3191,9 @@ Risk Reminder: ${riskReminder}`;
                       />
 
                       {/* OPTION C: Visual overlays on top of the analyzed screenshot */}
-                      {analysisReport && showAIOverlay && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
+                      {analysisReport && showAIOverlay && (analysisReport.signal?.toUpperCase().includes("BUY") || analysisReport.signal?.toUpperCase().includes("SELL")) && (
                         <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 bg-gradient-to-b from-black/40 via-transparent to-black/40 animate-fadeIn select-none">
-                          {analysisReport.signal === "BUY" ? (
+                          {analysisReport.signal?.toUpperCase().includes("BUY") ? (
                             <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between">
                               {/* Target Take Profit Zone (High contrast White) */}
                               <div className="h-[35%] w-full bg-white/10 border-b border-dashed border-white/30 flex items-center justify-between px-4 relative">
@@ -3148,7 +3255,7 @@ Risk Reminder: ${riskReminder}`;
                     </div>
 
                     {/* Toggle overlay controller */}
-                    {analysisReport && (analysisReport.signal === "BUY" || analysisReport.signal === "SELL") && (
+                    {analysisReport && (analysisReport.signal?.toUpperCase().includes("BUY") || analysisReport.signal?.toUpperCase().includes("SELL")) && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -3562,21 +3669,17 @@ Risk Reminder: ${riskReminder}`;
               <div className="flex justify-between items-center pb-2 border-b border-white/10">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`px-2.5 py-1 text-xs font-black rounded ${
-                      analysisReport.signal === "BUY"
-                        ? "bg-white text-black border border-white"
-                        : analysisReport.signal === "SELL"
-                        ? "bg-transparent text-white border border-white/40"
-                        : analysisReport.signal === "NO TRADE" || analysisReport.signal === "NO_TRADE"
-                        ? "bg-white/5 text-white/70 border border-white/10"
-                        : analysisReport.signal === "NO TRADE YET"
-                        ? "bg-amber-500 text-black border border-amber-500 shadow-md shadow-amber-500/10"
+                    className={`px-2.5 py-1 text-xs font-black rounded uppercase ${
+                      analysisReport.signal?.includes("BUY")
+                        ? "bg-emerald-500 text-black border border-emerald-500 font-extrabold"
+                        : analysisReport.signal?.includes("SELL")
+                        ? "bg-rose-500 text-black border border-rose-500 font-extrabold"
                         : analysisReport.signal === "FAILED"
                         ? "bg-white/5 text-white/40 border border-white/10"
-                        : "bg-white/10 text-white"
+                        : "bg-zinc-700 text-white border border-zinc-600 shadow-md shadow-zinc-500/10 font-extrabold"
                     }`}
                   >
-                    {analysisReport.signal === "FAILED" ? "ANALYSIS FAILED" : `${analysisReport.signal} setup`}
+                    {analysisReport.signal === "FAILED" ? "ANALYSIS FAILED" : analysisReport.signal}
                   </span>
                   {analysisReport.signal !== "FAILED" && (
                     <span className="text-xs text-neutral-500 font-mono">
@@ -3591,7 +3694,7 @@ Risk Reminder: ${riskReminder}`;
                 </div>
               </div>
 
-              {analysisReport.signal !== "FAILED" && analysisReport.signal !== "NO TRADE" && analysisReport.signal !== "NO_TRADE" && analysisReport.signal !== "HOLD" && (() => {
+              {(analysisReport.signal?.includes("BUY") || analysisReport.signal?.includes("SELL")) && (() => {
                 // Inline helper calculations for dynamic compliance auditing
                 const getPipMultiplier = (pairStr: string) => {
                   const p = (pairStr || "EURUSD").toUpperCase();
@@ -3622,7 +3725,7 @@ Risk Reminder: ${riskReminder}`;
                 const nTp = parseNum(adjustedTp || analysisReport.tp);
                 const nSl = parseNum(adjustedSl || analysisReport.sl);
 
-                const isBuy = analysisReport.signal === "BUY";
+                const isBuy = !!analysisReport.signal?.toUpperCase().includes("BUY");
                 
                 // Check Direction validity
                 const tpValid = isBuy ? nTp > nEntry : nTp < nEntry;
@@ -3663,15 +3766,18 @@ Risk Reminder: ${riskReminder}`;
                 const handlePerfectHeal = () => {
                   const baseLevel = parseFloat(analysisReport.level);
                   if (isNaN(baseLevel)) return;
+                  const slDistancePips = 25;
+                  const preferredRatio = riskSettings.preferredRr || 2.0;
+                  const tpDistancePips = slDistancePips * preferredRatio;
                   if (isBuy) {
-                    const freshSl = baseLevel - (25 * mult);
-                    const freshTp = baseLevel + (50 * mult);
+                    const freshSl = baseLevel - (slDistancePips * mult);
+                    const freshTp = baseLevel + (tpDistancePips * mult);
                     setAdjustedEntry(baseLevel.toFixed(prec));
                     setAdjustedSl(freshSl.toFixed(prec));
                     setAdjustedTp(freshTp.toFixed(prec));
                   } else {
-                    const freshSl = baseLevel + (25 * mult);
-                    const freshTp = baseLevel - (50 * mult);
+                    const freshSl = baseLevel + (slDistancePips * mult);
+                    const freshTp = baseLevel - (tpDistancePips * mult);
                     setAdjustedEntry(baseLevel.toFixed(prec));
                     setAdjustedSl(freshSl.toFixed(prec));
                     setAdjustedTp(freshTp.toFixed(prec));
@@ -3680,90 +3786,10 @@ Risk Reminder: ${riskReminder}`;
 
                 return (
                   <div className="space-y-3.5 pt-1 animate-fadeIn">
-                    {analysisReport.signal === "NO TRADE YET" && analysisReport.watchZone && (
-                      <div className="border border-amber-500/25 bg-amber-500/5 rounded-xl p-4.5 space-y-4 text-left font-sans animate-fadeIn">
-                        <div className="flex items-center justify-between border-b border-amber-500/20 pb-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                            </span>
-                            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-500">
-                              ACTIVE SETUP WATCH ZONE
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] font-mono font-black border border-amber-500/30 px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 uppercase">
-                              {analysisReport.watchZone.setupType} setup
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Top Boundaries row */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          <div className="border border-white/5 bg-white/[0.02] p-2.5 rounded-lg col-span-2 md:col-span-1">
-                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Ideal Entry Zone</span>
-                            <span className="text-sm font-black text-amber-400 font-mono tracking-tight">
-                              {analysisReport.watchZone.entryZone}
-                            </span>
-                          </div>
-                          <div className="border border-white/5 bg-white/[0.02] p-2.5 rounded-lg">
-                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Invalidation Level</span>
-                            <span className="text-xs font-bold text-white/80 font-mono">
-                              {analysisReport.watchZone.invalidationLevel}
-                            </span>
-                          </div>
-                          <div className="border border-white/5 bg-white/[0.02] p-2.5 rounded-lg">
-                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Take Profit Objectives</span>
-                            <span className="text-xs font-bold text-white/80 font-mono">
-                              {analysisReport.watchZone.targetLevels}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Liquidity targets and Confirmations */}
-                        <div className="space-y-2 text-xs">
-                          <div>
-                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Liquidity Objectives</span>
-                            <p className="text-[11px] text-white/85 font-medium leading-relaxed font-sans pl-1.5 border-l border-white/10">
-                              {analysisReport.watchZone.liquidityObjectives}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="block text-[8px] text-white/40 font-extrabold uppercase tracking-wider mb-0.5">Required Confirmation Triggers</span>
-                            <p className="text-[11px] text-white/85 font-medium leading-relaxed font-sans pl-1.5 border-l border-white/10">
-                              {analysisReport.watchZone.requiredConfirmations}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Wait For Callout Box */}
-                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-1.5">
-                          <div className="flex items-center gap-1.5 text-amber-400">
-                            <i className="ph ph-hourglass-high text-xs font-bold animate-pulse" />
-                            <span className="text-xs font-bold font-mono uppercase tracking-wider">WAIT For Scenario Validation</span>
-                          </div>
-                          <p className="text-xs text-white/95 font-medium leading-relaxed">
-                            {analysisReport.watchZone.waitFor}
-                          </p>
-                        </div>
-                        
-                        {/* Auto Generate alert action button for 1-click */}
-                        <div className="pt-2">
-                          <button
-                            type="button"
-                            onClick={handleCreateInstitutionalAlert}
-                            className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold text-xs py-2 rounded-lg transition-all shadow-md shadow-amber-500/10 hover:shadow-amber-500/20 cursor-pointer flex items-center justify-center gap-1.5 animate-pulse"
-                          >
-                            <i className="ph ph-bell text-sm" />
-                            <span>🚨 Save Setup Watch Zone Alert (Automatic Monitor)</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Raw original AI findings */}
-                    <div className="grid grid-cols-3 gap-2 font-mono text-xs text-neutral-400">
+                    {(analysisReport.signal?.includes("BUY") || analysisReport.signal?.includes("SELL")) && (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 font-mono text-xs text-neutral-400">
                       <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
                         <div className="text-[8px] text-white/40 mb-0.5 tracking-wider font-bold">RAW ENTRY</div>
                         <div className="font-extrabold text-white/90">{analysisReport.level}</div>
@@ -4141,8 +4167,10 @@ Risk Reminder: ${riskReminder}`;
                         )}
                       </div>
                     </div>
-                  </div>
-                );
+                  </>
+                )}
+              </div>
+            );
               })()}
 
               {analysisReport.signal === "FAILED" && (
