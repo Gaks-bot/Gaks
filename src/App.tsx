@@ -543,8 +543,17 @@ export default function App() {
   ]);
 
   // Strategy values and index configurations
-  const [selectedStrategy, setSelectedStrategy] = useState<string>(STRATEGIES_LIST[0]);
-  const [selectedStrategyIndex, setSelectedStrategyIndex] = useState<number>(0);
+  const [selectedStrategy, setSelectedStrategy] = useState<string>(() => {
+    return localStorage.getItem("gaks_selected_strategy") || STRATEGIES_LIST[0];
+  });
+  const [selectedStrategyIndex, setSelectedStrategyIndex] = useState<number>(() => {
+    const saved = localStorage.getItem("gaks_selected_strategy");
+    if (saved) {
+      const idx = STRATEGIES_LIST.indexOf(saved);
+      return idx >= 0 ? idx : 0;
+    }
+    return 0;
+  });
   const [isSaved, setIsSaved] = useState<boolean>(true);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string>("Strategy Synced ✓");
 
@@ -739,12 +748,36 @@ export default function App() {
     setIsSaved(false);
   };
 
-  const handleSaveStrategy = () => {
+  const handleSaveStrategy = async () => {
     setSyncStatusMsg("Syncing strategy...");
-    setTimeout(() => {
-      setIsSaved(true);
-      setSyncStatusMsg("Strategy Synced ✓");
-    }, 800);
+    localStorage.setItem("gaks_selected_strategy", selectedStrategy);
+    
+    try {
+      if (session?.user?.id) {
+        // Automatically sync and update all active market watchers for this user to match!
+        const { error } = await supabase
+          .from("market_watchers")
+          .update({ strategy: selectedStrategy })
+          .eq("user_id", session.user.id);
+
+        if (error) {
+          console.error("Database error updating watcher strategies:", error);
+        } else {
+          // Re-fetch active watchers to verify UI consistency
+          await fetchWatcherMarkets();
+        }
+      }
+      setTimeout(() => {
+        setIsSaved(true);
+        setSyncStatusMsg("Strategy Synced ✓");
+      }, 500);
+    } catch (err) {
+      console.warn("Exception updating database strategy rows:", err);
+      setTimeout(() => {
+        setIsSaved(true);
+        setSyncStatusMsg("Synced locally ✓");
+      }, 500);
+    }
   };
 
   const handlePickRandomExample = () => {
@@ -4255,662 +4288,70 @@ Risk Reminder: ${riskReminder}`;
           )}
 
           {analysisReport && (
-            <div className={`card p-5 border rounded-xl space-y-3 bg-[#0F0F0F] animate-fadeIn mb-4 ${
-              analysisReport.signal === "FAILED" 
-                ? "border-white/15" 
-                : "border-dashed border-white/10"
-            }`}>
-              <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-2.5 py-1 text-xs font-black rounded uppercase ${
-                      analysisReport.signal?.includes("BUY")
-                        ? "bg-emerald-500 text-black border border-emerald-500 font-extrabold"
-                        : analysisReport.signal?.includes("SELL")
-                        ? "bg-rose-500 text-black border border-rose-500 font-extrabold"
-                        : analysisReport.signal === "FAILED"
-                        ? "bg-white/5 text-white/40 border border-white/10"
-                        : "bg-zinc-700 text-white border border-zinc-600 shadow-md shadow-zinc-500/10 font-extrabold"
-                    }`}
-                  >
-                    {analysisReport.signal === "FAILED" ? "ANALYSIS FAILED" : analysisReport.signal}
-                  </span>
+            <div className="card p-6 border border-neutral-800 rounded-xl space-y-4 bg-[#0F0F0F] animate-fadeIn mb-4">
+              <div className="flex justify-between items-center pb-3 border-b border-neutral-800">
+                <div className="flex items-center gap-2.5">
+                  {(() => {
+                    const sig = (analysisReport.signal || "").toUpperCase();
+                    const isBuy = sig.includes("BUY");
+                    const isSell = sig.includes("SELL");
+                    const isFailed = sig === "FAILED";
+                    
+                    let bgClass = "bg-neutral-800/50 text-neutral-400 border border-neutral-700/30";
+                    let label = "NO TRADE";
+                    
+                    if (isBuy) {
+                      bgClass = "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-extrabold";
+                      label = "BUY";
+                    } else if (isSell) {
+                      bgClass = "bg-rose-500/15 text-rose-400 border border-rose-500/30 font-extrabold";
+                      label = "SELL";
+                    } else if (isFailed) {
+                      bgClass = "bg-red-500/10 text-red-400 border border-red-500/25";
+                      label = "ANALYSIS FAILED";
+                    }
+                    
+                    return (
+                      <span className={`px-3 py-1.5 text-xs font-black rounded-lg uppercase tracking-wider ${bgClass}`}>
+                        {label}
+                      </span>
+                    );
+                  })()}
+                  
                   {analysisReport.signal !== "FAILED" && (
-                    <span className="text-xs text-neutral-500 font-mono">
-                      Confidence: {analysisReport.confidence}
+                    <span className="text-xs text-neutral-400 font-mono">
+                      Confidence: <span className="text-white font-bold">{analysisReport.confidence}</span>
                     </span>
                   )}
                 </div>
+                
                 <div className="text-right">
-                  <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">
-                    {analysisReport.signal === "FAILED" ? "SYSTEM OUTCOME" : "Strategy Checked"}
+                  <span className="text-[10px] text-neutral-550 uppercase tracking-widest font-mono font-bold">
+                    SYSTEM OUTCOME
                   </span>
                 </div>
               </div>
-
-              {(analysisReport.signal?.includes("BUY") || analysisReport.signal?.includes("SELL")) && (() => {
-                // Inline helper calculations for dynamic compliance auditing
-                const getPipMultiplier = (pairStr: string) => {
-                  const p = (pairStr || "EURUSD").toUpperCase();
-                  if (p.includes("JPY")) return 0.01;
-                  if (p.includes("XAU") || p.includes("GOLD") || p.includes("XAG")) return 0.1;
-                  if (p.includes("BTC") || p.includes("ETH") || p.includes("SOL") || p.includes("USOIL") || p.includes("OIL")) return 1.0;
-                  return 0.0001;
-                };
-
-                const getPipPrecision = (pairStr: string) => {
-                  const p = (pairStr || "EURUSD").toUpperCase();
-                  if (p.includes("JPY")) return 3;
-                  if (p.includes("XAU") || p.includes("GOLD") || p.includes("XAG")) return 2;
-                  if (p.includes("BTC") || p.includes("ETH") || p.includes("SOL")) return 2;
-                  return 5;
-                };
-
-                const parseNum = (val: string) => {
-                  const n = parseFloat(val);
-                  return isNaN(n) ? 0 : n;
-                };
-
-                const symbolTag = detectedSymbol || "EURUSD";
-                const mult = getPipMultiplier(symbolTag);
-                const prec = getPipPrecision(symbolTag);
-
-                const nEntry = parseNum(adjustedEntry || analysisReport.level);
-                const nTp = parseNum(adjustedTp || analysisReport.tp);
-                const nSl = parseNum(adjustedSl || analysisReport.sl);
-
-                const isBuy = !!analysisReport.signal?.toUpperCase().includes("BUY");
-                
-                // Check Direction validity
-                const tpValid = isBuy ? nTp > nEntry : nTp < nEntry;
-                const slValid = isBuy ? nSl < nEntry : nSl > nEntry;
-                const directConflict = !tpValid || !slValid;
-
-                // Pip Distances
-                const slPipsHex = mult > 0 ? Math.abs(nSl - nEntry) / mult : 0;
-                const tpPipsHex = mult > 0 ? Math.abs(nTp - nEntry) / mult : 0;
-                
-                const slPips = Math.round(slPipsHex * 10) / 10;
-                const tpPips = Math.round(tpPipsHex * 10) / 10;
-
-                // Risk-Reward
-                const rrRatio = slPips > 0 ? (tpPips / slPips).toFixed(2) : "N/A";
-
-                // Broker stop level risk check (minimal distance check)
-                const isSlCloseRisk = slPips < 12 && slPips > 0;
-                const isTpCloseRisk = tpPips < 12 && tpPips > 0;
-                const stopLevelWarning = isSlCloseRisk || isTpCloseRisk;
-
-                // Quick copy handlers
-                const copyText = (txt: string, type: "SL" | "TP" | "ALL") => {
-                  navigator.clipboard.writeText(txt).then(() => {
-                    if (type === "SL") {
-                      setCopySlFeedback(true);
-                      setTimeout(() => setCopySlFeedback(false), 2000);
-                    } else if (type === "TP") {
-                      setCopyTpFeedback(true);
-                      setTimeout(() => setCopyTpFeedback(false), 2000);
-                    } else {
-                      setCopyAllFeedback(true);
-                      setTimeout(() => setCopyAllFeedback(false), 2000);
-                    }
-                  });
-                };
-
-                const handlePerfectHeal = () => {
-                  const baseLevel = parseFloat(analysisReport.level);
-                  if (isNaN(baseLevel)) return;
-                  const slDistancePips = 25;
-                  const preferredRatio = riskSettings.preferredRr || 2.0;
-                  const tpDistancePips = slDistancePips * preferredRatio;
-                  if (isBuy) {
-                    const freshSl = baseLevel - (slDistancePips * mult);
-                    const freshTp = baseLevel + (tpDistancePips * mult);
-                    setAdjustedEntry(baseLevel.toFixed(prec));
-                    setAdjustedSl(freshSl.toFixed(prec));
-                    setAdjustedTp(freshTp.toFixed(prec));
-                  } else {
-                    const freshSl = baseLevel + (slDistancePips * mult);
-                    const freshTp = baseLevel - (tpDistancePips * mult);
-                    setAdjustedEntry(baseLevel.toFixed(prec));
-                    setAdjustedSl(freshSl.toFixed(prec));
-                    setAdjustedTp(freshTp.toFixed(prec));
-                  }
-                };
-
-                return (
-                  <div className="space-y-3.5 pt-1 animate-fadeIn">
-                    {/* Raw original AI findings */}
-                    {(analysisReport.signal?.includes("BUY") || analysisReport.signal?.includes("SELL")) && (
-                      <>
-                        <div className="grid grid-cols-3 gap-2 font-mono text-xs text-neutral-400">
-                      <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
-                        <div className="text-[8px] text-white/40 mb-0.5 tracking-wider font-bold">RAW ENTRY</div>
-                        <div className="font-extrabold text-white/90">{analysisReport.level}</div>
-                      </div>
-                      <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
-                        <div className="text-[8px] text-white/40 mb-0.5 tracking-wider font-bold">RAW TP</div>
-                        <div className="font-extrabold text-white">{analysisReport.tp}</div>
-                      </div>
-                      <div className="border border-white/10 bg-[#0F0F0F] p-2 rounded">
-                        <div className="text-[8px] text-white/40 mb-0.5 tracking-wider font-bold">RAW SL</div>
-                        <div className="font-extrabold text-white/60">{analysisReport.sl}</div>
-                      </div>
-                    </div>
-
-                    {/* Safeguard Board */}
-                    <div className="bg-[#0F0F0F] border border-white/10 rounded-lg p-3.5 space-y-3 relative overflow-hidden">
-                      <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                        <div className="flex items-center gap-1.5">
-                          <i className={`ph ph-shield-check text-[14px] ${directConflict ? "text-white animate-pulse" : stopLevelWarning ? "text-white/70 animate-pulse" : "text-white"}`} />
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-white/80">MT5 Broker Compliance Safeguard</span>
-                        </div>
-                        <div>
-                          <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase select-none ${
-                            directConflict 
-                              ? "bg-white text-black border border-white" 
-                              : stopLevelWarning 
-                              ? "bg-[#0F0F0F] text-white/90 border border-white/25" 
-                              : "bg-white/10 text-white/85 border border-white/10"
-                          }`}>
-                            {directConflict ? "INVALID CHANNELS" : stopLevelWarning ? "STOPLEV RISK" : "LEVELS COMPLIANT"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Warnings if Flipped/Too Close */}
-                      {directConflict && (
-                        <div className="bg-white/5 border border-white text-white rounded-lg p-2.5 text-[11px] space-y-1">
-                          <div className="font-bold flex items-center gap-1">
-                            <i className="ph ph-warning-circle text-[13px] text-white" />
-                            <span>Action Required: Reversed Levels Detected!</span>
-                          </div>
-                          <p className="font-sans text-[10px] text-white/70 leading-relaxed text-left">
-                            For a <strong>{analysisReport.signal}</strong> setup, Take Profit must be {isBuy ? "higher" : "lower"} than the Entry, and Stop Loss must be {isBuy ? "lower" : "higher"}. MetaTrader 5 will strictly block orders with these inverted rates.
-                          </p>
-                        </div>
-                      )}
-
-                      {!directConflict && stopLevelWarning && (
-                        <div className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-[11px] text-white/90 space-y-1">
-                          <div className="font-bold flex items-center gap-1">
-                            <i className="ph ph-warning text-[13px] text-white/70" />
-                            <span>Warning: Broker Stop Level Margin Limit Risk!</span>
-                          </div>
-                          <p className="font-sans text-[10px] text-white/60 leading-relaxed text-left">
-                            {isSlCloseRisk ? `S/L (${slPips} pips)` : `T/P (${tpPips} pips)`} is extremely tight. Most Forex/Indices brokers require levels to be placed at least 10–15 pips away from active entry. A tight buffer frequently prompts "Invalid S/L or T/P" errors.
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Direct Editing Panel */}
-                      <div className="grid grid-cols-3 gap-2.5 pt-1">
-                        <div>
-                          <label className="block text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">ENTRY LEVEL</label>
-                          <input
-                            type="text"
-                            value={adjustedEntry}
-                            onChange={(e) => setAdjustedEntry(e.target.value)}
-                            className="w-full text-center bg-white/5 border border-white/10 focus:outline-none focus:border-white text-white font-mono text-xs py-1 rounded transition-colors"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">TAKE PROFIT (TP)</label>
-                          <input
-                            type="text"
-                            value={adjustedTp}
-                            onChange={(e) => setAdjustedTp(e.target.value)}
-                            className={`w-full text-center bg-white/5 border text-xs py-1 rounded font-mono transition-colors focus:outline-none focus:border-white ${
-                              tpValid ? "text-white border-white/10" : "text-white/50 border-white/30"
-                            }`}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">STOP LOSS (SL)</label>
-                          <input
-                            type="text"
-                            value={adjustedSl}
-                            onChange={(e) => setAdjustedSl(e.target.value)}
-                            className={`w-full text-center bg-white/5 border text-xs py-1 rounded font-mono transition-colors focus:outline-none focus:border-white ${
-                              slValid ? "text-white border-white/10" : "text-white/50 border-white/30"
-                            }`}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Interactive Account-Based Risk Management System Display */}
-                      {(() => {
-                        // Position sizing bounds check and core setup
-                        let unitsPerLot = 100000;
-                        const symUp = symbolTag.toUpperCase();
-                        if (symUp.includes("XAU") || symUp.includes("GOLD")) unitsPerLot = 100;
-                        else if (symUp.includes("XAG")) unitsPerLot = 5000;
-                        else if (symUp.includes("BTC") || symUp.includes("ETH") || symUp.includes("SOL") || symUp.includes("USOIL") || symUp.includes("OIL")) unitsPerLot = 1;
-
-                        const maxRiskCurrencyAmount = riskSettings.accountSize * (riskSettings.riskPercent / 100);
-                        const maxDailyLossAmount = riskSettings.accountSize * (riskSettings.maxDailyLossPercent / 100);
-
-                        const priceSlDistance = Math.abs(nSl - nEntry);
-                        let positionUnits = 0;
-                        let recommendedLots = 0;
-
-                        if (priceSlDistance > 0) {
-                          positionUnits = maxRiskCurrencyAmount / priceSlDistance;
-                          recommendedLots = positionUnits / unitsPerLot;
-                        }
-
-                        // Round lots standard 2 decimals.
-                        // Never increase the user's predefined risk automatically.
-                        const roundedLots = Math.round(recommendedLots * 100) / 100;
-                        const roundedUnits = Math.round(positionUnits);
-
-                        const slPipsHex = mult > 0 ? Math.abs(nSl - nEntry) / mult : 0;
-                        const tpPipsHex = mult > 0 ? Math.abs(nTp - nEntry) / mult : 0;
-                        const slPipsComputed = Math.round(slPipsHex * 10) / 10;
-                        const tpPipsComputed = Math.round(tpPipsHex * 10) / 10;
-                        const realRr = slPipsComputed > 0 ? (tpPipsComputed / slPipsComputed) : 0;
-
-                        // Identify Rule Violations
-                        let setupViolatesRules = false;
-                        let rulesViolationReasons: string[] = [];
-
-                        if (slPipsComputed === 0) {
-                          setupViolatesRules = true;
-                          rulesViolationReasons.push("Stop Loss is required to perform live risk parameters check.");
-                        } else {
-                          if (realRr < riskSettings.preferredRr - 0.005) {
-                            setupViolatesRules = true;
-                            rulesViolationReasons.push(`Setup R:R (1:${realRr.toFixed(2)}) is less than your preferred minimum R:R (1:${riskSettings.preferredRr.toFixed(1)})`);
-                          }
-                          if (maxRiskCurrencyAmount > maxDailyLossAmount) {
-                            setupViolatesRules = true;
-                            rulesViolationReasons.push(`Single trade risk ($${maxRiskCurrencyAmount.toLocaleString()}) exceeds your Maximum Daily Loss limit ($${maxDailyLossAmount.toLocaleString()})`);
-                          }
-                          if (riskSettings.riskPercent > riskSettings.maxDailyLossPercent) {
-                            setupViolatesRules = true;
-                            rulesViolationReasons.push(`Risk per trade (${riskSettings.riskPercent}%) is higher than max daily loss limit (${riskSettings.maxDailyLossPercent}%)`);
-                          }
-                        }
-
-                        return (
-                          <div className="space-y-3 pt-2 font-sans text-left">
-                            {/* Setup Param Compliance Banner */}
-                            {setupViolatesRules ? (
-                              <div className="bg-white/5 border border-white text-white rounded-lg p-3 text-left animate-fadeIn">
-                                <div className="flex items-center gap-2 text-white">
-                                  <i className="ph ph-shield-warning text-sm font-bold flex-shrink-0 animate-pulse" />
-                                  <span className="text-xs font-bold font-mono tracking-wide uppercase">Setup does not meet your risk parameters.</span>
-                                </div>
-                                <div className="pl-6 mt-1.5 text-[10.5px] text-white/70 font-medium space-y-1">
-                                  {rulesViolationReasons.map((reason, rIdx) => (
-                                    <div key={rIdx} className="flex gap-1.5 items-start">
-                                      <span className="text-white/40">•</span>
-                                      <span>{reason}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="bg-white/10 border border-[#FFFFFF]/20 rounded-lg p-3 flex items-center gap-2.5 text-left animate-fadeIn">
-                                <div className="h-5 w-5 rounded bg-white/10 flex items-center justify-center text-white">
-                                  <i className="ph ph-shield-check text-xs font-bold" />
-                                </div>
-                                <div className="flex-1">
-                                  <span className="text-xs font-bold text-white font-mono tracking-wide uppercase block font-sans">Setup complies with your risk parameters.</span>
-                                  <span className="text-[9.5px] text-white/50 leading-none">All configured drawdown and reward-to-risk rules are satisfied.</span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Execution Scorecard Grid */}
-                            <div className="bg-[#0F0F0F] border border-white/10 rounded-lg p-3.5 space-y-3">
-                              <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                                <div className="flex items-center gap-1.5">
-                                  <i className="ph ph-sliders text-[13px] text-white/50" />
-                                  <span className="text-[9.5px] font-mono font-bold tracking-wider uppercase text-white/80">
-                                    Account Risk Allocation Matrix
-                                  </span>
-                                </div>
-                                <span className="text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded uppercase bg-white/5 border border-white/10 text-white/75">
-                                  {riskSettings.accountType === "Prop Firm" ? `${riskSettings.propFirmName} Preset` : `${riskSettings.accountType} A/C`}
-                                </span>
-                              </div>
-
-                              {/* Direct Configuration Fields for Account Size, Risk %, Drawdown % */}
-                              <div className="grid grid-cols-3 gap-2 font-mono">
-                                <div className="space-y-1">
-                                  <label className="block text-[7.5px] text-white/40 font-extrabold uppercase tracking-widest leading-none">
-                                    Cap Size ($)
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={riskSettings.accountSize || 100000}
-                                    onChange={(e) => {
-                                      const val = Math.max(1, parseFloat(e.target.value) || 0);
-                                      handleSaveRiskSettings({
-                                        ...riskSettings,
-                                        accountSize: val
-                                      });
-                                    }}
-                                    className="w-full h-8 bg-white/5 border border-white/10 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-white font-bold"
-                                    placeholder="100000"
-                                  />
-                                </div>
-
-                                <div className="space-y-1">
-                                  <label className="block text-[7.5px] text-white/40 font-extrabold uppercase tracking-widest leading-none">
-                                    Risk / Cycle %
-                                  </label>
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0.01"
-                                    max="100"
-                                    value={riskSettings.riskPercent || 1.0}
-                                    onChange={(e) => {
-                                      const val = Math.max(0.01, Math.min(100, parseFloat(e.target.value) || 0));
-                                      handleSaveRiskSettings({
-                                        ...riskSettings,
-                                        riskPercent: val
-                                      });
-                                    }}
-                                    className="w-full h-8 bg-white/5 border border-white/10 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-white font-bold"
-                                    placeholder="1.0"
-                                  />
-                                </div>
-
-                                <div className="space-y-1">
-                                  <label className="block text-[7.5px] text-white/40 font-extrabold uppercase tracking-widest leading-none">
-                                    Drawdown %
-                                  </label>
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0.01"
-                                    max="100"
-                                    value={riskSettings.maxDailyLossPercent || 5.0}
-                                    onChange={(e) => {
-                                      const val = Math.max(0.01, Math.min(100, parseFloat(e.target.value) || 0));
-                                      handleSaveRiskSettings({
-                                        ...riskSettings,
-                                        maxDailyLossPercent: val
-                                      });
-                                    }}
-                                    className="w-full h-8 bg-white/5 border border-white/10 text-white px-2 py-1 rounded text-xs focus:outline-none focus:border-white font-bold"
-                                    placeholder="5.0"
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 font-mono">
-                                <div className="border border-white/10 bg-white/5 p-2 rounded">
-                                  <span className="block text-[8px] text-white/40 font-bold uppercase mb-0.5">Maximum Risk Exposure</span>
-                                  <span className="font-extrabold text-white text-xs">${maxRiskCurrencyAmount.toLocaleString()} ({riskSettings.riskPercent || 1.0}%)</span>
-                                </div>
-                                <div className="border border-white/10 bg-white/5 p-2 rounded">
-                                  <span className="block text-[8px] text-white/40 font-bold uppercase mb-0.5">Max Daily Loss Allowed</span>
-                                  <span className="font-extrabold text-white/50 text-xs">${maxDailyLossAmount.toLocaleString()} ({riskSettings.maxDailyLossPercent || 5.0}%)</span>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 font-mono pt-0.5">
-                                <div className="border border-white/10 bg-white/5 p-2 rounded col-span-2">
-                                  <span className="block text-[8px] text-white/40 font-semibold uppercase mb-0.5">Recommended Position Size</span>
-                                  <div className="flex items-baseline justify-between">
-                                    <span className="font-black text-white text-sm">
-                                      {slPipsComputed > 0 ? `${roundedLots.toFixed(2)} Lots` : "N/A"}
-                                    </span>
-                                    <span className="text-[10px] font-medium text-white/40 font-sans">
-                                      {slPipsComputed > 0 ? `(${roundedUnits.toLocaleString()} units)` : "Awaiting non-zero stop loss"}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-lg text-[10px] leading-relaxed text-white/50">
-                                <span className="text-white font-semibold">Live Trade Parameters Checked:</span> Entry <span className="text-white font-mono">{nEntry.toFixed(prec)}</span> | SL <span className="text-white/70 font-mono">{nSl.toFixed(prec)}</span> ({slPipsComputed} pips gap) | TP <span className="text-white font-mono">{nTp.toFixed(prec)}</span> ({tpPipsComputed} pips gap) | Risk-to-Reward Ratio <span className="text-white font-mono font-bold">1:{rrRatio}</span> (Preferred: 1:{riskSettings.preferredRr}).
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Interactive Actions Grid */}
-                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-white/10">
-                        {/* Auto Heal level button */}
-                        <button
-                          type="button"
-                          onClick={handlePerfectHeal}
-                          className="px-2.5 py-1 text-[10px] font-mono font-bold bg-white text-black hover:bg-white/90 border border-white rounded transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                          title="Auto-reconstruct S/L at 25 pips and T/P at 50 pips, complying fully with broker limits"
-                        >
-                          <i className="ph ph-lightning text-[11px]" />
-                          <span>⚡ Auto-Optimize Levels</span>
-                        </button>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => copyText(adjustedSl, "SL")}
-                            className="bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 rounded px-2.5 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
-                          >
-                            <i className={copySlFeedback ? "ph ph-check text-white" : "ph ph-copy"} />
-                            <span>{copySlFeedback ? "SL Copied!" : "Copy SL"}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => copyText(adjustedTp, "TP")}
-                            className="bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 rounded px-2.5 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
-                          >
-                            <i className={copyTpFeedback ? "ph ph-check text-white" : "ph ph-copy"} />
-                            <span>{copyTpFeedback ? "TP Copied!" : "Copy TP"}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const pasteBlock = `PAIR: ${symbolTag}\nBIAS: ${analysisReport.signal}\nENTRY: ${adjustedEntry}\nT/P: ${adjustedTp}\nS/L: ${adjustedSl}\nR:R: 1:${rrRatio}`;
-                              copyText(pasteBlock, "ALL");
-                            }}
-                            className="bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 rounded px-2 py-1 text-[10px] font-mono font-medium flex items-center gap-1 transition-colors"
-                            title="Copy complete parameters to clipboard for quick paste"
-                          >
-                            <i className={copyAllFeedback ? "ph ph-check text-white" : "ph ph-copy"} />
-                            <span>{copyAllFeedback ? "Copied All!" : "Copy Suite"}</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Collapse documentation on why MT5 errors occur */}
-                      <div className="border-t border-white/10 pt-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setShowMT5Docs(!showMT5Docs)}
-                          className="w-full text-left flex justify-between items-center text-[9px] text-white/55 hover:text-white font-mono tracking-wider font-semibold focus:outline-none uppercase"
-                        >
-                          <span>💡 Why does MT5 say "Invalid Take Profit or Stop Loss"?</span>
-                          <i className={`ph ${showMT5Docs ? "ph-caret-up" : "ph-caret-down"} text-[10px]`} />
-                        </button>
-                        
-                        {showMT5Docs && (
-                          <div className="mt-2 text-[10px] text-white/70 leading-relaxed font-sans bg-white/5 rounded border border-white/10 p-2 text-left space-y-2.5">
-                            <div>
-                              <strong className="text-white text-[10px] font-semibold">1. Reversed Direction Settings:</strong>
-                              <p className="text-white/60 text-[10px] mt-0.5 ml-1">
-                                MT5 enforces strict mathematical coordinates:
-                                <span className="block font-mono text-[9px] text-white/50 mt-0.5">• BUY: Stop Loss must be BELOW Entry. Take Profit must be ABOVE Entry.</span>
-                                <span className="block font-mono text-[9px] text-white/50 mt-0.5">• SELL: Stop Loss must be ABOVE Entry. Take Profit must be BELOW Entry.</span>
-                              </p>
-                            </div>
-                            <div>
-                              <strong className="text-white text-[10px] font-semibold">2. Broker "Stop Level" Distance:</strong>
-                              <p className="text-white/60 text-[10px] mt-0.5 ml-1">
-                                Every Forex broker sets a minimum spread offset (typically 10-30 points / 1-3 pips). If your SL or TP is too close to your entry price, MT5 rejects the order request. Keep levels 15+ pips away to guarantee safe execution!
-                              </p>
-                            </div>
-                            <div>
-                              <strong className="text-white text-[10px] font-semibold">3. Incorrect Digit Scale:</strong>
-                              <p className="text-white/60 text-[10px] mt-0.5 ml-1">
-                                Standard currency pairs accept exactly 5 decimal places. JPY pairs accept 3 decimal places. Commodities like Gold accept 2 decimal places. Entering extra digits generates rejected requests.
-                              </p>
-                            </div>
-                            <div className="text-[9px] text-white italic bg-white/5 p-1.5 border border-white/10 rounded">
-                              Pro Tip: Tap <strong>⚡ Auto-Optimize Levels</strong> above to automatically resolve any direction, distance, and precision discrepancies instantly!
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-              })()}
 
               {analysisReport.signal === "FAILED" && (
-                <div className="text-white/60 font-semibold text-xs flex items-center gap-1.5 pt-1">
-                  <span className="animate-pulse">●</span> Possible cause identified by Gaks System Diagnostics
+                <div className="text-red-400/80 font-mono text-[11px] flex items-center gap-1.5 pt-1">
+                  <span className="animate-pulse">●</span> Gaks System Diagnostics: Analysis could not complete successfully.
                 </div>
               )}
 
-              <p className="text-xs text-white/70 leading-relaxed font-sans mt-2 whitespace-pre-line">
-                {analysisReport.reason}
-              </p>
-            </div>
-          )}
-
-          {analysisReport && analysisReport.signal !== "FAILED" && (
-            <div className="card p-5 border border-white/10 bg-[#0F0F0F] rounded-xl space-y-4 animate-fadeIn mb-4" id="watchlist-alert-builder">
-              <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono uppercase tracking-widest text-white font-bold bg-white/10 px-2 py-0.5 rounded">
-                    Institutional Alert Setup
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <span className="text-[10px] text-[#A3A3A3] uppercase tracking-widest font-mono font-bold">
+                    Explanation & Strategy Notes
                   </span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                </div>
-                <span className="text-[10px] text-neutral-550 font-mono">Watchlist System</span>
-              </div>
-
-              <div className="text-xs text-neutral-300 leading-relaxed font-sans">
-                After completing an analysis, if rules for immediate market entry are not fully met, <strong>do not force a trade</strong>. Instead, draft a <strong>Watchlist Setup</strong> and activate institutional scanner alerts to monitor real-time triggers for you.
-              </div>
-
-              {/* Watchlist Setup Draft details */}
-              <div className="p-4 bg-neutral-950/80 rounded-xl border border-neutral-900 space-y-3.5">
-                <h4 className="text-xs font-bold font-mono text-neutral-200 tracking-wider uppercase m-0">Setup Blueprint</h4>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[9px] font-mono text-neutral-500 uppercase tracking-widest mb-1.5">Trading Asset</label>
-                    <div className="text-xs font-mono font-bold text-white bg-[#101010] p-2 rounded border border-neutral-900">{detectedSymbol}</div>
-                  </div>
-                  <div>
-                    <label className="block text-[9px] font-mono text-neutral-500 uppercase tracking-widest mb-1.5">Interval / Timeframe</label>
-                    <div className="text-xs font-mono font-bold text-white bg-[#101010] p-2 rounded border border-neutral-900">{detectedTimeframe}</div>
-                  </div>
-                  <div>
-                    <label className="block text-[9px] font-mono text-neutral-500 uppercase tracking-widest mb-1.5">Current Verdict</label>
-                    <div className="text-xs font-mono font-bold text-amber-400 bg-[#101010] p-2 rounded border border-neutral-900">{analysisReport.signal}</div>
-                  </div>
-                  <div>
-                    <label className="block text-[9px] font-mono text-neutral-500 uppercase tracking-widest mb-1.5">Trade Choice Score (Grade)</label>
-                    <select
-                      value={customScore}
-                      onChange={(e) => setCustomScore(e.target.value)}
-                      className="w-full bg-[#101010] border border-neutral-900 rounded p-1.5 text-xs text-neutral-200 font-mono focus:border-amber-500/40 outline-none cursor-pointer"
-                    >
-                      <option value="A+">Grade: A+ (Prime High-Quality Setup)</option>
-                      <option value="A">Grade: A (Exceptional Institutional Setup)</option>
-                      <option value="A-">Grade: A- (SMC Confirmed Target Zone)</option>
-                      <option value="B+">Grade: B+ (Highly Favored Play)</option>
-                      <option value="B">Grade: B (Moderate Confirmation Setup)</option>
-                      <option value="C">Grade: C (Speculative Liquidity Sweep)</option>
-                      <option value="D">Grade: D (Caution Needed)</option>
-                    </select>
+                  <div className="text-xs text-neutral-200 leading-relaxed font-sans whitespace-pre-line bg-neutral-950/60 p-4 border border-neutral-900 rounded-lg">
+                    {analysisReport.reason}
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-[9px] font-mono text-neutral-500 uppercase tracking-widest mb-1.5">Key Threshold Levels</label>
-                  <input
-                    type="text"
-                    value={customKeyLevels}
-                    onChange={(e) => setCustomKeyLevels(e.target.value)}
-                    className="w-full bg-[#101010]/95 border border-neutral-900 rounded p-2 text-xs text-white font-mono focus:border-amber-500/40 outline-none"
-                    placeholder="Trigger level, target TPs and stop loss limits"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[9px] font-mono text-neutral-500 uppercase tracking-widest mb-1.5">Conditions Required for Entry</label>
-                  <textarea
-                    rows={2}
-                    value={customRequiredConditions}
-                    onChange={(e) => setCustomRequiredConditions(e.target.value)}
-                    className="w-full bg-[#101010]/95 border border-neutral-900 rounded p-2 text-xs text-neutral-350 font-sans focus:border-amber-500/40 outline-none resize-none leading-relaxed"
-                    placeholder="Specify structural price behaviors required before manually pressing trade trigger"
-                  />
-                </div>
               </div>
-
-              {/* Set alert options selection block */}
-              <div className="space-y-2.5">
-                <span className="block text-[9px] font-mono text-neutral-410 uppercase tracking-widest font-bold">
-                  Select Target Alert Conditions (Monitor saved setups):
-                </span>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {[
-                    "Price entering a specified zone",
-                    "Break of Structure (BOS)",
-                    "Change of Character (CHOCH)",
-                    "Liquidity sweep",
-                    "Fair Value Gap fill",
-                    "Order Block mitigation",
-                    "Minimum Risk-to-Reward threshold",
-                    "Full setup confirmation"
-                  ].map((cond) => {
-                    const checked = selectedAlertTypes.includes(cond);
-                    return (
-                      <label 
-                        key={cond} 
-                        className="flex items-center gap-2.5 bg-neutral-950/40 hover:bg-neutral-950 border border-neutral-900 p-2 rounded-lg cursor-pointer transition-colors select-none"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => handleToggleAlertType(cond)}
-                          className="sr-only"
-                        />
-                        <div className={`h-4 w-4 rounded flex items-center justify-center border text-[10px] transition-all font-bold ${
-                          checked ? "bg-amber-500 border-amber-500 text-black" : "border-neutral-800 bg-black text-transparent"
-                        }`}>
-                          {checked && "✓"}
-                        </div>
-                        <span className={`text-[11px] font-sans ${checked ? "text-neutral-100 font-medium" : "text-neutral-400"}`}>
-                          {cond}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                onClick={handleCreateInstitutionalAlert}
-                className="w-full py-2.5 bg-white hover:bg-white/90 rounded-lg text-xs font-bold text-[#0F0F0F] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md select-none font-sans"
-              >
-                <i className="ph ph-bell-plus text-sm" /> Establish Watchlist Setup Alert
-              </button>
-
-              {alertSuccessMsg && (
-                <div className="p-3 rounded-lg bg-white/5 border border-white/20 text-white text-xs flex items-center gap-2 animate-fadeIn font-sans font-medium">
-                  <i className="ph ph-check-circle text-base text-white" />
-                  <span>{alertSuccessMsg}</span>
-                </div>
-              )}
             </div>
           )}
+
+
 
           {/* Validation Warning Alert banner */}
           {((!isLive && uploadedImage) || isLive) && (!detectedSymbol || !detectedTimeframe) && (
