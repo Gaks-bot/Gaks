@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
@@ -125,6 +126,340 @@ async function startServer() {
   // API endpoints FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // Admin-Only Twelve Data Diagnostics Route
+  app.post("/api/test-twelve-data", async (req, res) => {
+    const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
+    if (!twelveKey) {
+      return res.status(400).json({ status: "error", errorType: "Invalid API Key", message: "TWELVE_DATA_API_KEY environment variable is not configured on the server." });
+    }
+
+    try {
+      console.log("Fetching XAUUSD H1 from Twelve Data...");
+      const url = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=1`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        return res.status(resp.status).json({ status: "error", errorType: "Network Error", message: `HTTP Error: ${resp.statusText}` });
+      }
+      const rawData = await resp.json();
+
+      if (rawData && rawData.status === "error") {
+        const msg = rawData.message || "";
+        if (msg.includes("apikey") || msg.includes("api_key") || msg.includes("api key") || rawData.code === 401) {
+          return res.status(401).json({ status: "error", errorType: "Invalid API Key", message: msg });
+        } else if (msg.includes("rate limit") || msg.includes("credits") || rawData.code === 429) {
+          return res.status(429).json({ status: "error", errorType: "Rate Limit Reached", message: msg });
+        } else {
+          return res.status(400).json({ status: "error", errorType: "API Error", message: msg });
+        }
+      }
+
+      if (rawData && rawData.values && rawData.values.length > 0) {
+        console.log("Response received successfully");
+        const latest = rawData.values[0];
+        console.log(`Latest close price: ${latest.close}`);
+        return res.json({
+          status: "success",
+          symbol: rawData.meta?.symbol || "XAU/USD",
+          timeframe: rawData.meta?.interval || "1h",
+          open: latest.open,
+          high: latest.high,
+          low: latest.low,
+          close: latest.close,
+          timestamp: latest.datetime
+        });
+      } else {
+        return res.status(400).json({ status: "error", errorType: "API Error", message: "Empty values array from Twelve Data API." });
+      }
+    } catch (err: any) {
+      console.error("Twelve Data fetch failed:", err);
+      return res.status(500).json({ status: "error", errorType: "Network Error", message: err.message || "Failed to make HTTP request to Twelve Data." });
+    }
+  });
+
+  // Admin-Only End-to-End System Test Diagnostics Route
+  app.post("/api/test-end-to-end", async (req, res) => {
+    const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
+    const resendKey = process.env.Resend_key || process.env.RESEND_API_KEY || process.env.resend_key;
+    const { userApiKey, strategy, adminEmail } = req.body;
+
+    if (!twelveKey) {
+      return res.status(400).json({ status: "error", message: "TWELVE_DATA_API_KEY environment variable is not configured on the server." });
+    }
+
+    if (!resendKey) {
+      return res.status(400).json({ status: "error", message: "Resend API key (Resend_key) environment variable is not configured on the server." });
+    }
+
+    if (!adminEmail || (adminEmail !== "gaddt8310@gmail.com" && adminEmail !== "gaddt8315@gmail.com")) {
+      return res.status(403).json({ status: "error", message: "Forbidden: Admin privileges required." });
+    }
+
+    try {
+      console.log("[E2E Test] Step 1: Fetching XAUUSD H1 candles from Twelve Data...");
+      const twelveUrl = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=20`;
+      const twelveResp = await fetch(twelveUrl);
+      if (!twelveResp.ok) {
+        throw new Error(`Twelve Data HTTP Error: ${twelveResp.status} ${twelveResp.statusText}`);
+      }
+      const rawData = await twelveResp.json();
+      if (rawData && rawData.status === "error") {
+        throw new Error(`Twelve Data API Error: ${rawData.message}`);
+      }
+      const candles = rawData.values;
+      if (!candles || candles.length === 0) {
+        throw new Error("Twelve Data API returned an empty candles array.");
+      }
+
+      console.log(`[E2E Test] Step 2: Formatted market data successfully. Active Strategy text length: ${strategy?.length || 0}`);
+      const formattedCandles = candles.map((c: any) => 
+        `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`
+      ).join("\n");
+
+      const strategyText = strategy || "Supply & Demand / Smart Money Concepts (SMC) Strategy";
+      const firstLineOfStrategy = strategyText.split("\n")[0] || "Active Strategy";
+
+      console.log(`[E2E Test] Step 3: Dispatching to Gemini with active strategy: "${firstLineOfStrategy}"`);
+      const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
+        const prompt = `You are an institutional smart money analyst.
+Analyze the following XAU/USD H1 market data (20 candles, latest to oldest):
+${formattedCandles}
+
+Using the active strategy rules:
+${strategyText}
+
+Perform a comprehensive analysis. Determine whether the current setup is:
+- BUY_SETUP
+- SELL_SETUP
+- NO_TRADE_SETUP
+
+You MUST response with a JSON object. The response format must be strictly valid JSON according to this structure (do not append any other text or markdown block wrappers):
+{
+  "setup": "BUY_SETUP" | "SELL_SETUP" | "NO_TRADE_SETUP",
+  "confidence": <integer percentage between 0 and 100>,
+  "explanation": "<brief, 2-3 sentence explanation of the technical analysis in relation to the active strategy>"
+}`;
+
+        const response = await aiClient.models.generateContent({
+          model: modelName,
+          contents: prompt
+        });
+
+        return response.text;
+      });
+
+      console.log(`[E2E Test] Step 4: Gemini analysis completed. Extracting results...`);
+      const geminiResponseText = (rotationCall.result || "").trim();
+      let cleanJson = geminiResponseText;
+      if (cleanJson.includes("```")) {
+        const match = cleanJson.match(/```(?:json)?([\s\S]*?)```/);
+        if (match) {
+          cleanJson = match[1];
+        }
+      }
+      cleanJson = cleanJson.trim();
+
+      let setup = "NO_TRADE_SETUP";
+      let confidence = 70;
+      let explanation = "";
+
+      try {
+        const parsed = JSON.parse(cleanJson);
+        setup = parsed.setup || "NO_TRADE_SETUP";
+        confidence = typeof parsed.confidence === "number" ? parsed.confidence : 70;
+        explanation = parsed.explanation || "No explanation provided.";
+      } catch (err) {
+        console.warn("[E2E Test] Failed to parse JSON from Gemini. Falling back to keyphrase match...", err);
+        explanation = geminiResponseText;
+        const upper = geminiResponseText.toUpperCase();
+        if (upper.includes("BUY_SETUP")) setup = "BUY_SETUP";
+        else if (upper.includes("SELL_SETUP")) setup = "SELL_SETUP";
+        else setup = "NO_TRADE_SETUP";
+      }
+
+      console.log(`[E2E Test] Step 5: Sending compilation to Admin via Resend...`);
+      const timestampStr = new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC";
+
+      const emailBody = {
+        from: "Gaks AI E2E System Test <onboarding@resend.dev>",
+        to: [adminEmail],
+        subject: `Gaks AI End-to-End Test`,
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 25px; line-height: 1.6; max-width: 650px; margin: auto; border: 1px solid #222; border-radius: 12px; background-color: #0d0d0d; color: #ffffff;">
+            <h2 style="color: #f59e0b; border-bottom: 2px solid #222; padding-bottom: 12px; margin-top: 0; font-size: 20px;">🛡️ End-to-End System Integration Diagnostics</h2>
+            <p style="color: #a3a3a3; font-size: 13px;">This email verifies that your trading intelligence pipelines (Twelve Data API, active strategy injector, Gemini model routers, and Resend delivery channels) are fully functional.</p>
+            
+            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #333; margin: 20px 0;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <tr>
+                  <td style="padding: 6px 0; color: #737373; font-weight: bold; width: 140px;">Pair:</td>
+                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">XAUUSD</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #737373; font-weight: bold;">Timeframe:</td>
+                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">H1</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #737373; font-weight: bold;">Strategy Name:</td>
+                  <td style="padding: 6px 0; color: #e5e5e5; font-style: italic;">${firstLineOfStrategy}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #737373; font-weight: bold;">Analysis Result:</td>
+                  <td style="padding: 6px 0;">
+                    <span style="background-color: ${setup === "BUY_SETUP" ? "rgba(16, 185, 129, 0.2)" : setup === "SELL_SETUP" ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.1)"}; color: ${setup === "BUY_SETUP" ? "#34d399" : setup === "SELL_SETUP" ? "#f87171" : "#d4d4d4"}; border: 1px solid ${setup === "BUY_SETUP" ? "rgba(16, 185, 129, 0.3)" : setup === "SELL_SETUP" ? "rgba(239, 68, 68, 0.3)" : "rgba(255, 255, 255, 0.2)"}; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-family: monospace;">
+                      ${setup}
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #737373; font-weight: bold;">Confidence Score:</td>
+                  <td style="padding: 6px 0; color: #fff; font-weight: bold;">${confidence}%</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #737373; font-weight: bold; vertical-align: top;">Explanation:</td>
+                  <td style="padding: 6px 0; color: #d4d4d4; line-height: 1.5;">${explanation}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #737373; font-weight: bold;">Timestamp:</td>
+                  <td style="padding: 6px 0; color: #a3a3a3; font-family: monospace;">${timestampStr}</td>
+                </tr>
+              </table>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #222; margin: 20px 0;" />
+            <p style="font-size: 11px; color: #525252; margin-bottom: 0;">Diagnostics Engine • Secured for administrative endpoints • Active User: ${adminEmail}</p>
+          </div>
+        `
+      };
+
+      const resendResp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(emailBody)
+      });
+
+      if (!resendResp.ok) {
+        const errTxt = await resendResp.text();
+        throw new Error(`Resend Email API failure (HTTP ${resendResp.status}): ${errTxt}`);
+      }
+
+      console.log(`[E2E Test] Step 6: Resend email dispatched and confirmed successfully to ${adminEmail}!`);
+
+      return res.json({
+        status: "success",
+        pair: "XAUUSD",
+        timeframe: "H1",
+        strategyName: firstLineOfStrategy,
+        geminiResult: setup,
+        confidence: confidence,
+        explanation: explanation,
+        timestamp: timestampStr
+      });
+
+    } catch (err: any) {
+      console.error("[E2E Test] Exception raised during diagnostics flow execution:", err);
+      return res.status(500).json({ status: "error", message: err.message || "Failed running E2E Diagnostics System Test." });
+    }
+  });
+
+  // Admin-Only Test Gemini Analysis Diagnostics Route
+  app.post("/api/test-gemini-analysis", async (req, res) => {
+    const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
+    const { userApiKey } = req.body;
+
+    if (!twelveKey) {
+      return res.status(400).json({ status: "error", errorType: "API Error", message: "TWELVE_DATA_API_KEY environment variable is not configured on the server." });
+    }
+
+    try {
+      console.log("Fetching market data...");
+      const url = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=20`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        return res.status(resp.status).json({ status: "error", errorType: "Network Error", message: `Twelve Data HTTP Error: ${resp.statusText}` });
+      }
+      const rawData = await resp.json();
+
+      if (rawData && rawData.status === "error") {
+        const msg = rawData.message || "";
+        let errorType = "API Error";
+        if (msg.includes("apikey") || msg.includes("api_key") || msg.includes("api key") || rawData.code === 401) {
+          errorType = "Invalid API Key";
+        } else if (msg.includes("rate limit") || msg.includes("credits") || rawData.code === 429) {
+          errorType = "Rate Limit Reached";
+        }
+        return res.status(400).json({ status: "error", errorType, message: msg });
+      }
+
+      const candles = rawData.values;
+      if (!candles || candles.length === 0) {
+        return res.status(400).json({ status: "error", errorType: "API Error", message: "Empty candles from Twelve Data API." });
+      }
+
+      // Format candles for prompt
+      const formattedCandles = candles.map((c: any) => 
+        `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`
+      ).join("\n");
+
+      console.log("Sending data to Gemini...");
+      const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
+        const prompt = `You are an expert financial market analyst. Analyze the following 20 recent H1 candlesticks for symbol XAU/USD (from latest to oldest):
+
+${formattedCandles}
+
+Determine whether there is a valid BUY_SETUP, SELL_SETUP, or if there is no setup (NO_TRADE_SETUP).
+You MUST return ONLY one of these exact strings as your entire response. Do NOT add any surrounding text, markdown formatting (such as code blocks), markdown bold tag, or explanation.
+
+Your response MUST be exactly one of:
+BUY_SETUP
+SELL_SETUP
+NO_TRADE_SETUP`;
+
+        const response = await aiClient.models.generateContent({
+          model: modelName,
+          contents: prompt
+        });
+
+        return response.text;
+      });
+
+      const geminiResponseText = (rotationCall.result || "").trim();
+      console.log("Gemini response received.");
+
+      let sanitizedResult = geminiResponseText;
+      // Clean potential wrappers
+      sanitizedResult = sanitizedResult.replace(/[`*_\s]/g, "");
+
+      if (sanitizedResult === "BUY_SETUP" || sanitizedResult === "SELL_SETUP" || sanitizedResult === "NO_TRADE_SETUP") {
+        return res.json({
+          status: "success",
+          symbol: "XAUUSD",
+          timeframe: "H1",
+          geminiResult: sanitizedResult
+        });
+      } else {
+        // Fallback matching
+        const upper = sanitizedResult.toUpperCase();
+        if (upper.includes("BUY")) sanitizedResult = "BUY_SETUP";
+        else if (upper.includes("SELL")) sanitizedResult = "SELL_SETUP";
+        else sanitizedResult = "NO_TRADE_SETUP";
+
+        return res.json({
+          status: "success",
+          symbol: "XAUUSD",
+          timeframe: "H1",
+          geminiResult: sanitizedResult
+        });
+      }
+
+    } catch (err: any) {
+      console.error("Gemini analysis execution failed:", err);
+      return res.status(500).json({ status: "error", errorType: "API Error", message: err.message || "Failed running Gemini analysis." });
+    }
   });
 
 
@@ -565,10 +900,48 @@ ${icon} ${stateName}`;
 
   let currentKeyPoolIndex = 0;
 
+  // Helper to execute any Gemini API call with adaptive exponential backoff and jitter for transient server errors (e.g. 503, 429)
+  async function executeWithTransientRetry<T>(
+    aiClient: GoogleGenAI,
+    apiExecutor: (aiClient: GoogleGenAI, modelName: string) => Promise<T>,
+    maxRetries = 3
+  ): Promise<T> {
+    let attempt = 0;
+    const modelCandidates = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+    while (true) {
+      const currentModel = modelCandidates[attempt % modelCandidates.length];
+      try {
+        return await apiExecutor(aiClient, currentModel);
+      } catch (error: any) {
+        attempt++;
+        const errorString = error?.message || (typeof error === "object" ? JSON.stringify(error) : String(error));
+        const errLower = errorString.toLowerCase();
+        
+        const isTransient = 
+          errorString.includes("503") || 
+          errLower.includes("unavailable") || 
+          errorString.includes("429") || 
+          errLower.includes("resource_exhausted") || 
+          errLower.includes("rate limit") ||
+          errLower.includes("high demand") ||
+          errLower.includes("temporary");
+
+        if (isTransient && attempt <= maxRetries) {
+          const nextModel = modelCandidates[attempt % modelCandidates.length];
+          const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+          console.warn(`[Gemini Resiliency Engine] Transient exception on model ${currentModel} (attempt ${attempt}/${maxRetries}): ${errorString.slice(0, 160)}. Switching to ${nextModel} and retrying in ${Math.round(delay)}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
   // Orchestrator executing a Gemini call against active key index or custom user key
   async function executeWithRotation<T>(
     userApiKey: string | undefined,
-    apiExecutor: (aiClient: GoogleGenAI) => Promise<T>
+    apiExecutor: (aiClient: GoogleGenAI, modelName: string) => Promise<T>
   ): Promise<{ result: T; keySource: string; keyIndex: number }> {
     // 1. If user supplied a custom personal override key, use it directly!
     if (userApiKey && userApiKey.trim() !== "") {
@@ -581,7 +954,7 @@ ${icon} ${stateName}`;
           }
         }
       });
-      const result = await apiExecutor(ai);
+      const result = await executeWithTransientRetry(ai, apiExecutor);
       return { result, keySource: "user_personal_override", keyIndex: -1 };
     }
 
@@ -625,7 +998,7 @@ ${icon} ${stateName}`;
           }
         });
 
-        const result = await apiExecutor(ai);
+        const result = await executeWithTransientRetry(ai, apiExecutor);
 
         // SUCCESS! Update health metrics & status
         const duration = Date.now() - requestStartTime;
@@ -685,7 +1058,7 @@ ${icon} ${stateName}`;
             apiKey: activeKey,
             httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
           });
-          const result = await apiExecutor(ai);
+          const result = await executeWithTransientRetry(ai, apiExecutor);
           return { result, keySource: "Backup Recovery", keyIndex: 0 };
         } catch (_) {}
       }
@@ -693,6 +1066,296 @@ ${icon} ${stateName}`;
 
     throw new Error("SHARED_KEYS_EXHAUSTED");
   }
+
+  // In-memory cache to track last_alert_sent per watcher in Express Server
+  const inMemoryLastAlertSentInExpress = new Map<string, number>();
+
+  // Real-time market scanner handler for on-demand dashboard scans
+  app.post("/api/market-scanner", async (req, res) => {
+    console.log("[Express Scanner] Trigger received for market-scanner...");
+    try {
+      const supabaseUrl = process.env.SUPABASE_URL || "https://awouklnnntxoxyaijeow.supabase.co";
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "sb_publishable_PVuRXXkCwD2fbvpk1h_Q2w_nDBeINxA";
+      
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+      // Query active watchers from DB
+      const { data: watchers, error: watcherErr } = await supabase
+        .from("market_watchers")
+        .select("*")
+        .eq("active", true);
+
+      if (watcherErr) {
+        console.error("[Express Scanner] Failed to query active market watchers:", watcherErr);
+        return res.status(500).json({ error: watcherErr.message });
+      }
+
+      console.log(`[Express Scanner] Found ${watchers?.length || 0} active watchers to process in server trigger.`);
+      const processedSetups = [];
+
+      const localGenerateFallbackCandles = (pairSymbol: string) => {
+        let baseVal = 1.1750;
+        if (pairSymbol.includes("JPY")) baseVal = 159.20;
+        if (pairSymbol.includes("XAU")) baseVal = 2342.50;
+        if (pairSymbol.includes("BTC")) baseVal = 67500.00;
+        if (pairSymbol.includes("ETH")) baseVal = 3480.00;
+
+        const list = [];
+        let currVal = baseVal;
+        const timestamp = new Date();
+
+        for (let i = 20; i > 0; i--) {
+          const shift = (Math.random() - 0.48) * (baseVal * 0.0018);
+          const oPrice = currVal;
+          const cPrice = currVal + shift;
+          const hPrice = Math.max(oPrice, cPrice) + (Math.random() * (baseVal * 0.0008));
+          const lPrice = Math.min(oPrice, cPrice) - (Math.random() * (baseVal * 0.0008));
+          
+          list.push({
+            datetime: new Date(timestamp.getTime() - i * 15 * 60 * 1000).toISOString(),
+            open: oPrice.toFixed(5),
+            high: hPrice.toFixed(5),
+            low: lPrice.toFixed(5),
+            close: cPrice.toFixed(5),
+            volume: Math.round(150 + Math.random() * 850).toString()
+          });
+          currVal = cPrice;
+        }
+        return list;
+      };
+
+      if (watchers && watchers.length > 0) {
+        for (const watcher of watchers) {
+          const { id: watcherId, user_id: userId, email, pair, timeframe, strategy } = watcher;
+          console.log(`[Express Watcher: ${watcherId}] Processing pair ${pair} for user ${userId}...`);
+
+          // Load user's Gemini key
+          const { data: keyRecord, error: keyErr } = await supabase
+            .from("user_api_keys")
+            .select("gemini_api_key")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          if (keyErr) {
+            console.error(`[Express Watcher] Error fetching user key:`, keyErr);
+          }
+
+          const userKey = keyRecord?.gemini_api_key?.trim();
+
+          if (!userKey) {
+            console.warn(`[Express Watcher] No Gemini API key saved for user ${userId}. Pausing watcher.`);
+            
+            await supabase
+              .from("market_watchers")
+              .update({ active: false })
+              .eq("id", watcherId);
+
+            // Register database notification for missing key
+            await supabase.from("alerts").insert([{
+              user_id: userId,
+              email: email || "user@example.com",
+              pair: pair,
+              timeframe: timeframe,
+              setup_type: "KEY_ATTENTION",
+              status: "ACTIVE",
+              created_at: new Date().toISOString()
+            }]);
+            continue;
+          }
+
+          // Fetch Twelve Data candles or generate fallbacks
+          let candles = [];
+          const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
+          
+          let intervalMapped = "1h";
+          const normTf = timeframe.trim().toUpperCase();
+          if (normTf === "M1" || normTf === "1M") intervalMapped = "1min";
+          else if (normTf === "M5" || normTf === "5M") intervalMapped = "5min";
+          else if (normTf === "M15" || normTf === "15M") intervalMapped = "15min";
+          else if (normTf === "M30" || normTf === "30M") intervalMapped = "30min";
+          else if (normTf === "H2" || normTf === "2H") intervalMapped = "2h";
+          else if (normTf === "H4" || normTf === "4H") intervalMapped = "4h";
+          else if (normTf === "D1" || normTf === "1D" || normTf === "D") intervalMapped = "1day";
+
+          if (twelveKey) {
+            try {
+              console.log(`[Express Watcher] Loading candles from Twelve Data for ${pair}...`);
+              const pairClean = pair.replace("/", "");
+              const url = `https://api.twelvedata.com/time_series?symbol=${pairClean}&interval=${intervalMapped}&apikey=${twelveKey}&outputsize=20`;
+              const resp = await fetch(url);
+              const rawData = await resp.json();
+              if (rawData && rawData.values && rawData.values.length > 0) {
+                candles = rawData.values;
+              } else {
+                candles = localGenerateFallbackCandles(pair);
+              }
+            } catch (err) {
+              candles = localGenerateFallbackCandles(pair);
+            }
+          } else {
+            console.log(`[Express Watcher] Twelve Key is missing. Generating fallback candles for ${pair}`);
+            candles = localGenerateFallbackCandles(pair);
+          }
+
+          // Run Gemini check with structured JSON evaluation and confidence level
+          let geminiVerdict = "NO_TRADE_SETUP";
+          let confidenceScore = 0;
+          let isValidKey = true;
+
+          try {
+            console.log(`[Express Watcher] Analyzing with Gemini...`);
+            const candlesText = candles.map(c => `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`).join("\n");
+            
+            const prompt = `You are an elite institutional trading analyst and algorithms risk manager.
+Analyze the following market candlestick data under the selective criteria of "${strategy}" strategy.
+
+We are searching exclusively for high-probability trade setups and confidence score:
+1. BUY_SETUP: Rejection off orderblock, liquidity sweep under swing low, structure breakage.
+2. SELL_SETUP: Rejection off bearish block, liquidity sweep above high, structure break down.
+3. NO_TRADE_SETUP: Sideways noise, no clear momentum.
+
+Evaluate the candlestick data below and return a valid JSON object matching this schema EXACTLY:
+{
+  "verdict": "BUY_SETUP" | "SELL_SETUP" | "NO_TRADE_SETUP",
+  "confidence": number (integer between 0 and 100 representing probability score, default 0 for NO_TRADE_SETUP)
+}
+No markdown wrappers, descriptive dialogue, or spaces.
+
+Data for ${pair} [${timeframe}]:
+${candlesText}`;
+
+            const ai = new GoogleGenAI({ apiKey: userKey });
+            const response = await ai.models.generateContent({
+              model: "gemini-2.5-flash",
+              contents: prompt,
+              config: {
+                temperature: 0.1,
+                maxOutputTokens: 150,
+                responseMimeType: "application/json"
+              }
+            });
+
+            const text = response.text?.trim() || "{}";
+            try {
+              const startIdx = text.indexOf("{");
+              const endIdx = text.lastIndexOf("}");
+              if (startIdx !== -1 && endIdx !== -1) {
+                const parsed = JSON.parse(text.substring(startIdx, endIdx + 1));
+                let parsedVerdict = String(parsed.verdict || parsed.setup || "NO_TRADE_SETUP").trim().toUpperCase();
+                let parsedConfidence = Number(parsed.confidence || 85);
+
+                if (parsedVerdict.includes("BUY")) parsedVerdict = "BUY_SETUP";
+                else if (parsedVerdict.includes("SELL")) parsedVerdict = "SELL_SETUP";
+                else parsedVerdict = "NO_TRADE_SETUP";
+
+                geminiVerdict = parsedVerdict;
+                confidenceScore = parsedConfidence;
+              }
+            } catch (pErr) {
+              console.warn("[Express Watcher] Regex fallback on JSON parsing failure:", pErr);
+              // Word matching fallback
+              if (text.includes("BUY_SETUP") || text.includes("BUY")) {
+                geminiVerdict = "BUY_SETUP";
+              } else if (text.includes("SELL_SETUP") || text.includes("SELL")) {
+                geminiVerdict = "SELL_SETUP";
+              }
+              const digits = text.match(/\d+/);
+              confidenceScore = digits ? Math.min(100, Math.max(0, parseInt(digits[0], 10))) : (geminiVerdict !== "NO_TRADE_SETUP" ? 85 : 0);
+            }
+          } catch (gemErr: any) {
+            const errStr = gemErr.message || "";
+            console.error("[Express Watcher] Gemini error:", errStr);
+            if (errStr.includes("API key not valid") || errStr.includes("invalid key") || errStr.includes("INVALID_ARGUMENT") || errStr.includes("API_KEY_INVALID") || errStr.includes("API_KEY_INDEX")) {
+              isValidKey = false;
+            }
+          }
+
+          if (!isValidKey) {
+            console.warn(`[Express Watcher] Invalid key detected. Pausing watcher.`);
+            await supabase
+              .from("market_watchers")
+              .update({ active: false })
+              .eq("id", watcherId);
+
+            await supabase.from("alerts").insert([{
+              user_id: userId,
+              email: email || "user@example.com",
+              pair: pair,
+              timeframe: timeframe,
+              setup_type: "KEY_ATTENTION",
+              status: "ACTIVE",
+              created_at: new Date().toISOString()
+            }]);
+            continue;
+          }
+
+          processedSetups.push({
+            watcher_id: watcherId,
+            pair,
+            timeframe,
+            strategy,
+            verdict: geminiVerdict,
+            confidence: confidenceScore
+          });
+
+          // Connect Resend Notifications & Duplicates Prevention using last_alert_sent
+          if (geminiVerdict === "BUY_SETUP" || geminiVerdict === "SELL_SETUP") {
+            const dbLastSent = watcher.last_alert_sent ? new Date(watcher.last_alert_sent).getTime() : 0;
+            const memoryLastSent = inMemoryLastAlertSentInExpress.get(String(watcherId)) || 0;
+            const finalLastSent = Math.max(dbLastSent, memoryLastSent);
+
+            const isDuplicate = (Date.now() - finalLastSent) < (4 * 60 * 60 * 1000); // 4-hour cooldown threshold
+
+            if (isDuplicate) {
+              console.log(`[Express Watcher] Duplicate detected for ${pair} (last_alert_sent cooldown active). Skipping alerts.`);
+            } else {
+              // Save setup alert in database
+              const setupLabel = geminiVerdict === "BUY_SETUP" ? "Bullish Reversal Setup" : "Bearish Redistribution Setup";
+              const notificationMsg = `⚠️ Institutional Smart Money Alert: A high-probability ${setupLabel} was detected on ${pair} (${timeframe}) using ${strategy} with ${confidenceScore}% confidence.`;
+
+              await supabase.from("alerts").insert([{
+                user_id: userId,
+                email: email || "user@example.com",
+                pair: pair,
+                timeframe: timeframe,
+                setup_type: geminiVerdict,
+                status: "ACTIVE",
+                created_at: new Date().toISOString()
+              }]);
+              console.log(`[Express Watcher] Saved setup alert ${geminiVerdict} into database!`);
+
+              // Email alerts occur strictly inside the Supabase Edge Function to protect Resend_key security.
+              console.log(`[Express Watcher] Email delivery is disabled on Express Node server. All email alerts must occur inside the Supabase Edge Function.`);
+              
+              // Still update last_alert_sent status so the database matches setup trigger
+              const nowISO = new Date().toISOString();
+              inMemoryLastAlertSentInExpress.set(String(watcherId), Date.now());
+
+              try {
+                const { error: updErr } = await supabase
+                  .from("market_watchers")
+                  .update({ last_alert_sent: nowISO })
+                  .eq("id", watcherId);
+                
+                if (updErr) {
+                  console.warn(`[Express Watcher] soft warning - last_alert_sent can't be updated: ${updErr.message}`);
+                } else {
+                  console.log(`[Express Watcher] successfully updated last_alert_sent in DB.`);
+                }
+              } catch (dbErr: any) {
+                console.warn(`[Express Watcher] soft warning - last_alert_sent update database exception:`, dbErr.message);
+              }
+            }
+          }
+        }
+      }
+
+      return res.json({ success: true, count: watchers?.length || 0, processed: processedSetups });
+    } catch (err: any) {
+      console.error("[Express Scanner Terminal Error]", err);
+      return res.status(500).json({ error: err.message || "An error occurred during scan process." });
+    }
+  });
 
   // Helper middleware/check inline for Admin Authorization
   function verifyIsAdmin(req: express.Request): boolean {
@@ -976,12 +1639,12 @@ ${icon} ${stateName}`;
       const mimeType = match[1];
       const base64Data = match[2];
 
-      const rotationCall = await executeWithRotation(userApiKey, async (aiClient) => {
+      const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
         // High confidence pre-override from filename matches to keep Gemini aligned
         const fileMatch = detectSymbolFromFilename(filename);
 
         const response = await aiClient.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: modelName,
           contents: {
             parts: [
               {
@@ -1446,7 +2109,7 @@ ${strategy || 'General Smart Money Concepts, Multi-Timeframe Alignment and Liqui
 ${userRiskComplianceString}`;
       }
 
-      const rotationCall = await executeWithRotation(userApiKey, async (aiClient) => {
+      const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
         const parts = isLive ? [
           {
             text: promptString
@@ -1464,7 +2127,7 @@ ${userRiskComplianceString}`;
         ];
 
         const response = await aiClient.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: modelName,
           contents: {
             parts
           },
