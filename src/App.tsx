@@ -1597,23 +1597,23 @@ export default function App() {
 
       const data = await resp.json();
 
-      if (resp.ok && data.status === "success") {
+      if (resp.ok && data.success === true && data.data) {
         addLog("Sending email...");
         await new Promise(resolve => setTimeout(resolve, 700));
 
         addLog("Test completed successfully.");
         setE2eTestResult({
           status: "success",
-          pair: data.pair,
-          timeframe: data.timeframe,
-          strategyName: data.strategyName,
-          geminiResult: data.geminiResult,
-          confidence: data.confidence,
-          explanation: data.explanation,
-          timestamp: data.timestamp
+          pair: data.data.pair,
+          timeframe: data.data.timeframe,
+          strategyName: data.data.strategy,
+          geminiResult: data.data.result,
+          confidence: data.data.confidence,
+          explanation: data.data.explanation,
+          timestamp: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC"
         });
       } else {
-        throw new Error(data.message || "Diagnostics endpoint returned an error.");
+        throw new Error(data.error || "Diagnostics endpoint returned an error.");
       }
 
     } catch (err: any) {

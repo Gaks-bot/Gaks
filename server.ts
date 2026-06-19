@@ -185,34 +185,59 @@ async function startServer() {
     const { userApiKey, strategy, adminEmail } = req.body;
 
     if (!twelveKey) {
-      return res.status(400).json({ status: "error", message: "TWELVE_DATA_API_KEY environment variable is not configured on the server." });
+      return res.status(200).json({
+        success: false,
+        error: "TWELVE_DATA_API_KEY environment variable is not configured on the server."
+      });
     }
 
     if (!resendKey) {
-      return res.status(400).json({ status: "error", message: "Resend API key (Resend_key) environment variable is not configured on the server." });
+      return res.status(200).json({
+        success: false,
+        error: "Resend API key (Resend_key) environment variable is not configured on the server."
+      });
     }
 
     if (!adminEmail || (adminEmail !== "gaddt8310@gmail.com" && adminEmail !== "gaddt8315@gmail.com")) {
-      return res.status(403).json({ status: "error", message: "Forbidden: Admin privileges required." });
+      return res.status(200).json({
+        success: false,
+        error: "Forbidden: Admin privileges required."
+      });
     }
 
     try {
-      console.log("[E2E Test] Step 1: Fetching XAUUSD H1 candles from Twelve Data...");
-      const twelveUrl = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=20`;
-      const twelveResp = await fetch(twelveUrl);
-      if (!twelveResp.ok) {
-        throw new Error(`Twelve Data HTTP Error: ${twelveResp.status} ${twelveResp.statusText}`);
-      }
-      const rawData = await twelveResp.json();
-      if (rawData && rawData.status === "error") {
-        throw new Error(`Twelve Data API Error: ${rawData.message}`);
-      }
-      const candles = rawData.values;
-      if (!candles || candles.length === 0) {
-        throw new Error("Twelve Data API returned an empty candles array.");
+      console.log("[E2E Test Log] Fetching market data: Step 1 beginning...");
+      let candles = [];
+      try {
+        const twelveUrl = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=20`;
+        const twelveResp = await fetch(twelveUrl);
+        if (!twelveResp.ok) {
+          throw new Error(`Twelve Data HTTP Error: ${twelveResp.status} ${twelveResp.statusText}`);
+        }
+        const rawData = await twelveResp.json();
+        if (rawData && rawData.status === "error") {
+          throw new Error(`Twelve Data API Error: ${rawData.message}`);
+        }
+        candles = rawData.values || [];
+      } catch (twelveErr: any) {
+        console.error("[E2E Test Log] Fetching market data failed:", twelveErr);
+        return res.status(200).json({
+          success: false,
+          error: `Market Data Fetch Failed: ${twelveErr.message || "Failed fetching candles from Twelve Data."}`
+        });
       }
 
-      console.log(`[E2E Test] Step 2: Formatted market data successfully. Active Strategy text length: ${strategy?.length || 0}`);
+      if (!candles || candles.length === 0) {
+        console.warn("[E2E Test Log] Fetching market data returned 0 candles!");
+        return res.status(200).json({
+          success: false,
+          error: "Twelve Data returned an empty candles array."
+        });
+      }
+
+      console.log(`[E2E Test Log] Fetching market data successful: Retrieved ${candles.length} candles.`);
+
+      console.log("[E2E Test Log] Sending to Gemini: Step 2 beginning...");
       const formattedCandles = candles.map((c: any) => 
         `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`
       ).join("\n");
@@ -220,9 +245,13 @@ async function startServer() {
       const strategyText = strategy || "Supply & Demand / Smart Money Concepts (SMC) Strategy";
       const firstLineOfStrategy = strategyText.split("\n")[0] || "Active Strategy";
 
-      console.log(`[E2E Test] Step 3: Dispatching to Gemini with active strategy: "${firstLineOfStrategy}"`);
-      const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
-        const prompt = `You are an institutional smart money analyst.
+      let setup = "NO_TRADE_SETUP";
+      let confidence = 70;
+      let explanation = "";
+
+      try {
+        const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
+          const prompt = `You are an institutional smart money analyst.
 Analyze the following XAU/USD H1 market data (20 candles, latest to oldest):
 ${formattedCandles}
 
@@ -241,44 +270,58 @@ You MUST response with a JSON object. The response format must be strictly valid
   "explanation": "<brief, 2-3 sentence explanation of the technical analysis in relation to the active strategy>"
 }`;
 
-        const response = await aiClient.models.generateContent({
-          model: modelName,
-          contents: prompt
+          const response = await aiClient.models.generateContent({
+            model: modelName,
+            contents: prompt
+          });
+
+          return response.text;
         });
 
-        return response.text;
-      });
-
-      console.log(`[E2E Test] Step 4: Gemini analysis completed. Extracting results...`);
-      const geminiResponseText = (rotationCall.result || "").trim();
-      let cleanJson = geminiResponseText;
-      if (cleanJson.includes("```")) {
-        const match = cleanJson.match(/```(?:json)?([\s\S]*?)```/);
-        if (match) {
-          cleanJson = match[1];
+        const geminiResponseText = (rotationCall.result || "").trim();
+        let cleanJson = geminiResponseText;
+        if (cleanJson.includes("```")) {
+          const match = cleanJson.match(/```(?:json)?([\s\S]*?)```/);
+          if (match) {
+            cleanJson = match[1];
+          }
         }
+        cleanJson = cleanJson.trim();
+
+        try {
+          const parsed = JSON.parse(cleanJson);
+          setup = parsed.setup || "NO_TRADE_SETUP";
+          confidence = typeof parsed.confidence === "number" ? parsed.confidence : 70;
+          explanation = parsed.explanation || "No explanation provided.";
+        } catch (err) {
+          console.warn("[E2E Test Log] Failed to parse JSON from Gemini. Falling back to phrase match...", err);
+          explanation = geminiResponseText;
+          const upper = geminiResponseText.toUpperCase();
+          if (upper.includes("BUY_SETUP") || upper.includes("BUY")) setup = "BUY_SETUP";
+          else if (upper.includes("SELL_SETUP") || upper.includes("SELL")) setup = "SELL_SETUP";
+          else setup = "NO_TRADE_SETUP";
+        }
+      } catch (geminiErr: any) {
+        console.error("[E2E Test Log] Sending to Gemini failed:", geminiErr);
+        return res.status(200).json({
+          success: false,
+          error: `Gemini Call Failed: ${geminiErr.message || "Failed during Gemini analysis."}`
+        });
       }
-      cleanJson = cleanJson.trim();
 
-      let setup = "NO_TRADE_SETUP";
-      let confidence = 70;
-      let explanation = "";
-
-      try {
-        const parsed = JSON.parse(cleanJson);
-        setup = parsed.setup || "NO_TRADE_SETUP";
-        confidence = typeof parsed.confidence === "number" ? parsed.confidence : 70;
-        explanation = parsed.explanation || "No explanation provided.";
-      } catch (err) {
-        console.warn("[E2E Test] Failed to parse JSON from Gemini. Falling back to keyphrase match...", err);
-        explanation = geminiResponseText;
-        const upper = geminiResponseText.toUpperCase();
-        if (upper.includes("BUY_SETUP")) setup = "BUY_SETUP";
-        else if (upper.includes("SELL_SETUP")) setup = "SELL_SETUP";
-        else setup = "NO_TRADE_SETUP";
+      // Enforce valid setup/result options exactly
+      const setupUpper = setup.trim().toUpperCase();
+      if (setupUpper.includes("BUY")) {
+        setup = "BUY_SETUP";
+      } else if (setupUpper.includes("SELL")) {
+        setup = "SELL_SETUP";
+      } else {
+        setup = "NO_TRADE_SETUP";
       }
 
-      console.log(`[E2E Test] Step 5: Sending compilation to Admin via Resend...`);
+      console.log(`[E2E Test Log] Sending to Gemini successful: Setup identified as ${setup} with confidence ${confidence}%.`);
+
+      console.log("[E2E Test Log] Sending email: Step 3 beginning...");
       const timestampStr = new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC";
 
       const emailBody = {
@@ -333,36 +376,49 @@ You MUST response with a JSON object. The response format must be strictly valid
         `
       };
 
-      const resendResp = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(emailBody)
-      });
+      try {
+        const resendResp = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(emailBody)
+        });
 
-      if (!resendResp.ok) {
-        const errTxt = await resendResp.text();
-        throw new Error(`Resend Email API failure (HTTP ${resendResp.status}): ${errTxt}`);
+        if (!resendResp.ok) {
+          const errTxt = await resendResp.text();
+          throw new Error(`Resend Email API failure (HTTP ${resendResp.status}): ${errTxt}`);
+        }
+      } catch (resendErr: any) {
+        console.error("[E2E Test Log] Sending email failed:", resendErr);
+        return res.status(200).json({
+          success: false,
+          error: `Resend Email Delivery Failed: ${resendErr.message || "Failed to dispatch email notification."}`
+        });
       }
 
-      console.log(`[E2E Test] Step 6: Resend email dispatched and confirmed successfully to ${adminEmail}!`);
+      console.log(`[E2E Test Log] Sending email successful: Diagnostics email sent to ${adminEmail}.`);
 
-      return res.json({
-        status: "success",
-        pair: "XAUUSD",
-        timeframe: "H1",
-        strategyName: firstLineOfStrategy,
-        geminiResult: setup,
-        confidence: confidence,
-        explanation: explanation,
-        timestamp: timestampStr
+      console.log("[E2E Test Log] Diagnostics flow finished successfully.");
+      return res.status(200).json({
+        success: true,
+        data: {
+          pair: "XAUUSD",
+          timeframe: "H1",
+          strategy: firstLineOfStrategy,
+          result: setup,
+          confidence: confidence,
+          explanation: explanation
+        }
       });
 
     } catch (err: any) {
-      console.error("[E2E Test] Exception raised during diagnostics flow execution:", err);
-      return res.status(500).json({ status: "error", message: err.message || "Failed running E2E Diagnostics System Test." });
+      console.error("[E2E Test Log] Unhandled exception occurred during diagnostics execution:", err);
+      return res.status(200).json({
+        success: false,
+        error: err.message || "An unexpected error occurred during E2E Diagnostics."
+      });
     }
   });
 
