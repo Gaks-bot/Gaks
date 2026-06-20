@@ -1660,6 +1660,7 @@ export default function App() {
 
       const adminEmail = session?.user?.email || "gaddt8310@gmail.com";
 
+      console.log("Invoking function: handleEndToEndSystemTest");
       const resp = await fetch("/api/test-end-to-end", {
         method: "POST",
         headers: {
