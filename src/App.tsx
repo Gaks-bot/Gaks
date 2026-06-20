@@ -1883,7 +1883,7 @@ export default function App() {
       console.warn("Server-side verification failed, trying direct client-side verification:", serverErr);
     }
 
-    // Fall back to direct client handshake if server is offline or returned an error
+    // Safe server-only verification check
     if (!responseOk || !data.success) {
       if (userGeminiKey.startsWith("GEMINI_API_KEY_DEMO_HOLDER") || userGeminiKey.trim() === "DEMO_KEY") {
         setKeyTestResult({ success: true, message: "Demo Key formatted cleanly. Sandbox simulation check succeeded." });
@@ -1893,34 +1893,10 @@ export default function App() {
         return;
       }
 
-      const clientStartTime = Date.now();
-      try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
-        const geminiRes = await fetch(geminiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: "Return 'OK'" }]
-            }]
-          })
-        });
-
-        const latency = Date.now() - clientStartTime;
-        if (geminiRes.ok) {
-          setKeyTestResult({ success: true, message: "Direct verification handshake succeeded. Key is active and authorized!" });
-          logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-3.5-flash", "SUCCESS", latency, "250 B");
-        } else {
-          const geminiErrData = await geminiRes.json().catch(() => ({}));
-          const apiErrorMsg = geminiErrData?.error?.message || `Google API returned status code ${geminiRes.status}`;
-          setKeyTestResult({ success: false, message: apiErrorMsg });
-          logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "250 B");
-        }
-      } catch (clientErr: any) {
-        const latency = Date.now() - clientStartTime;
-        setKeyTestResult({ success: false, message: clientErr.message || "Direct handshake failed. Please check network connectivity and details." });
-        logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
-      }
+      setKeyTestResult({
+        success: false,
+        message: data.message || data.error || "Verification failed. Please double check that your API Key is correct and active."
+      });
     } else {
       setKeyTestResult({ success: true, message: data.message || "Handshake succeeded!" });
     }
@@ -1991,83 +1967,14 @@ export default function App() {
         console.warn("Server detect-symbol-timeframe failed, relying on direct client-side fallback:", serverErr);
       }
 
-      // Safe Fallback: Direct client-side visual detection using the user's Gemini Key!
+      // Safe Fallback: Offline local heuristics without key exposure!
       if (!success) {
-        if (!userGeminiKey || !userGeminiKey.trim() || userGeminiKey.startsWith("GEMINI_API_KEY_DEMO_HOLDER") || userGeminiKey.trim() === "DEMO_KEY") {
-          // No user key or demo key -> run heuristic detection
-          const fileMatch = detectSymbolFromFilename(fileName);
-          data = {
-            symbol: fileMatch || activeMarketAsset?.pair || "EUR/USD",
-            timeframe: "1H",
-            confidence: "Offline heuristic layout. Enter a personal Gemini Key to unlock high-fidelity AI asset auto-detection."
-          };
-        } else {
-          const match = base64Image.match(/^data:([^;]+);base64,(.+)$/);
-          if (match) {
-            const mimeType = match[1];
-            const base64Data = match[2];
-            const fileMatch = detectSymbolFromFilename(fileName);
-            const clientStartTime = Date.now();
-
-            try {
-              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
-              const geminiRes = await fetch(geminiUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{
-                    parts: [
-                      {
-                        inlineData: {
-                          mimeType,
-                          data: base64Data
-                        }
-                      },
-                      {
-                        text: `Analyze this chart screenshot and identify:
-1. The asset symbol / ticker / currency pair (e.g. "EURUSD", "BTCUSD", "AAPL", "XAUUSD", "GBPUSD", "ETHUSD"). Look at the titles, headers, watermarks or axis. Return clean upper-case letters without slashes if possible (e.g., "EURUSD" instead of "EUR/USD", "BTCUSD" instead of "BTC/USD"). ${fileMatch ? `Note: filename hints suggest this is likely ${fileMatch}` : ''}
-2. The current active timeframe of the chart (e.g., "5m", "15m", "1h", "4h", "1d", "D"). Look for indicators, headers or timeframe select boxes highlighted on the screen.
-3. A short confidence statement explaining how confident you are in this detection.
-
-Return your findings in the requested JSON structure. No markdown formatting.`
-                      }
-                    ]
-                  }],
-                  generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                      type: "OBJECT",
-                      properties: {
-                        symbol: { type: "STRING" },
-                        timeframe: { type: "STRING" },
-                        confidence: { type: "STRING" }
-                      },
-                      required: ["symbol", "timeframe", "confidence"]
-                    }
-                  }
-                })
-              });
-
-              const latency = Date.now() - clientStartTime;
-              if (geminiRes.ok) {
-                const resData = await geminiRes.json();
-                const textContent = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-                data = JSON.parse(textContent);
-                if (fileMatch && (!data.symbol || data.symbol === "EURUSD" || data.symbol.toUpperCase().includes("CAD"))) {
-                  data.symbol = fileMatch;
-                }
-                logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-3.5-flash", "SUCCESS", latency, "350 B");
-              } else {
-                logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
-                throw new Error(`Google API returned status code ${geminiRes.status}`);
-              }
-            } catch (fallbackErr: any) {
-              const latency = Date.now() - clientStartTime;
-              logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
-              throw fallbackErr;
-            }
-          }
-        }
+        const fileMatch = detectSymbolFromFilename(fileName);
+        data = {
+          symbol: fileMatch || activeMarketAsset?.pair || "EUR/USD",
+          timeframe: "1H",
+          confidence: "Offline heuristic layout. Please check your network connection or API setup."
+        };
       }
 
       if (data) {
@@ -2697,7 +2604,13 @@ ${userRiskComplianceString}`;
         }
 
         const fallbackStartTime = Date.now();
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
+        // Securely block direct client-side requests to prevent API Key exposure
+        throw new Error(
+          (errPayload && (errPayload.details || errPayload.error)) || 
+          "Failed to request analysis from the secure server proxy. Direct client-side calls are disabled for API key security."
+        );
+        // Direct fallback disabled:
+        const geminiUrl = "";
         const geminiRes = await fetch(geminiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
