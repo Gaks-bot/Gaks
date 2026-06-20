@@ -1466,30 +1466,70 @@ export default function App() {
           "Content-Type": "application/json"
         }
       });
-      const data = await resp.json();
       
-      if (resp.ok && data.status === "success") {
-        console.log("Response received successfully");
-        console.log(`Latest close price: ${data.close}`);
-        setTwelveDataTestResult({
-          status: "success",
-          data: {
-            symbol: data.symbol,
-            timeframe: data.timeframe,
-            open: data.open,
-            high: data.high,
-            low: data.low,
-            close: data.close,
-            timestamp: data.timestamp
-          }
-        });
+      let rawText = "";
+      try {
+        rawText = await resp.text();
+      } catch (readErr: any) {
+        console.error("[Twelve Data Test] Failed to read response stream:", readErr);
+        throw new Error(`Failed to read response body: ${readErr.message}`);
+      }
+
+      let data: any = null;
+      if (resp.ok) {
+        try {
+          data = JSON.parse(rawText);
+        } catch (jsonErr: any) {
+          console.error("[Twelve Data Test] HTTP 200 but failed to parse JSON:", jsonErr);
+          console.error("[Twelve Data Test raw response]:", rawText);
+          const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
+          const errorMsg = isHtml ? "The backend returned an HTML page. The server / Twelve Data scraper may have crashed." : rawText;
+          throw new Error(`Invalid JSON response: ${errorMsg.slice(0, 300)}`);
+        }
+
+        if (data && data.status === "success") {
+          console.log("Response received successfully");
+          console.log(`Latest close price: ${data.close}`);
+          setTwelveDataTestResult({
+            status: "success",
+            data: {
+              symbol: data.symbol,
+              timeframe: data.timeframe,
+              open: data.open,
+              high: data.high,
+              low: data.low,
+              close: data.close,
+              timestamp: data.timestamp
+            }
+          });
+        } else {
+          const errType = data?.errorType || "API Error";
+          setTwelveDataTestResult({
+            status: "error",
+            errorType: errType as any,
+            message: data?.message || "Failed to fetch Twelve Data"
+          });
+        }
       } else {
-        const errType = data.errorType || "API Error";
-        setTwelveDataTestResult({
-          status: "error",
-          errorType: errType as any,
-          message: data.message || "Failed to fetch Twelve Data"
-        });
+        console.error(`[Twelve Data Test] Server returned HTTP error status ${resp.status}`);
+        console.error("[Twelve Data Test error response text]:", rawText);
+        const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
+        const errorMsg = isHtml ? `The server returned an HTML error page (Status ${resp.status}).` : rawText;
+        
+        try {
+          const parsedErr = JSON.parse(rawText);
+          setTwelveDataTestResult({
+            status: "error",
+            errorType: (parsedErr.errorType || "Network Error") as any,
+            message: parsedErr.message || `HTTP ${resp.status}`
+          });
+        } catch (_) {
+          setTwelveDataTestResult({
+            status: "error",
+            errorType: "Network Error",
+            message: errorMsg || `HTTP ${resp.status}: Failed to retrieve data.`
+          });
+        }
       }
     } catch (err: any) {
       console.error("Fetch exception during Twelve Data test:", err);
@@ -1531,21 +1571,58 @@ export default function App() {
         })
       });
 
-      const data = await resp.json();
+      let rawText = "";
+      try {
+        rawText = await resp.text();
+      } catch (readErr: any) {
+        console.error("[Gemini Connection Test] Failed to read response stream:", readErr);
+        throw new Error(`Failed to read response body: ${readErr.message}`);
+      }
 
-      if (resp.ok && data.status === "success") {
-        addLog("Gemini response received.");
-        setGeminiAnalysisResult({
-          status: "success",
-          pair: data.symbol,
-          timeframe: data.timeframe,
-          geminiResult: data.geminiResult
-        });
+      let data: any = null;
+      if (resp.ok) {
+        try {
+          data = JSON.parse(rawText);
+        } catch (jsonErr: any) {
+          console.error("[Gemini Connection Test] HTTP 200 OK but failed to parse JSON:", jsonErr);
+          console.error("[Gemini Connection Test raw response]:", rawText);
+          const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
+          const errorMsg = isHtml ? "The backend returned an HTML page. The server / Gemini scraper may have crashed." : rawText;
+          throw new Error(`Invalid JSON response: ${errorMsg.slice(0, 300)}`);
+        }
+
+        if (data && data.status === "success") {
+          addLog("Gemini response received.");
+          setGeminiAnalysisResult({
+            status: "success",
+            pair: data.symbol,
+            timeframe: data.timeframe,
+            geminiResult: data.geminiResult
+          });
+        } else {
+          setGeminiAnalysisResult({
+            status: "error",
+            message: data?.message || "Failed running Gemini analysis."
+          });
+        }
       } else {
-        setGeminiAnalysisResult({
-          status: "error",
-          message: data.message || "Failed running Gemini analysis."
-        });
+        console.error(`[Gemini Connection Test] HTTP Error status ${resp.status}`);
+        console.error("[Gemini Connection Test error response text]:", rawText);
+        const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
+        const errorMsg = isHtml ? `The server returned an HTML error page (Status ${resp.status}). The Edge Function may have crashed.` : rawText;
+        
+        try {
+          const parsedErr = JSON.parse(rawText);
+          setGeminiAnalysisResult({
+            status: "error",
+            message: parsedErr.message || `HTTP ${resp.status}: Gemini error.`
+          });
+        } catch (_) {
+          setGeminiAnalysisResult({
+            status: "error",
+            message: errorMsg || `HTTP ${resp.status}: Gemini Connection Test failed.`
+          });
+        }
       }
     } catch (err: any) {
       console.error("Gemini analysis client fetch failed:", err);
@@ -1595,25 +1672,57 @@ export default function App() {
         })
       });
 
-      const data = await resp.json();
+      let rawText = "";
+      try {
+        rawText = await resp.text();
+      } catch (readErr: any) {
+        console.error("[E2E Test] Failed to read response body text:", readErr);
+        throw new Error(`Failed to read response body text: ${readErr.message}`);
+      }
 
-      if (resp.ok && data.success === true && data.data) {
-        addLog("Sending email...");
-        await new Promise(resolve => setTimeout(resolve, 700));
+      let data: any = null;
+      if (resp.ok) {
+        try {
+          data = JSON.parse(rawText);
+        } catch (jsonErr: any) {
+          console.error("[E2E Test] HTTP 200 OK but response is not valid JSON:", jsonErr);
+          console.error("[E2E Test Err Response Text]:", rawText);
+          const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
+          const displayErr = isHtml ? "The backend returned an HTML error page. The Supabase Edge Function or server may have crashed." : rawText;
+          throw new Error(`Failed to parse server response as JSON. Received text: ${displayErr.slice(0, 300)}`);
+        }
 
-        addLog("Test completed successfully.");
-        setE2eTestResult({
-          status: "success",
-          pair: data.data.pair,
-          timeframe: data.data.timeframe,
-          strategyName: data.data.strategy,
-          geminiResult: data.data.result,
-          confidence: data.data.confidence,
-          explanation: data.data.explanation,
-          timestamp: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC"
-        });
+        if (data && data.success === true && data.data) {
+          addLog("Sending email...");
+          await new Promise(resolve => setTimeout(resolve, 700));
+
+          addLog("Test completed successfully.");
+          setE2eTestResult({
+            status: "success",
+            pair: data.data.pair,
+            timeframe: data.data.timeframe,
+            strategyName: data.data.strategy,
+            geminiResult: data.data.result,
+            confidence: data.data.confidence,
+            explanation: data.data.explanation,
+            timestamp: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC"
+          });
+        } else {
+          throw new Error(data?.error || "Diagnostics endpoint returned an error status in payload.");
+        }
       } else {
-        throw new Error(data.error || "Diagnostics endpoint returned an error.");
+        console.error(`[E2E Test] Server returned HTTP error status ${resp.status}`);
+        console.error("[E2E Test Error Response Text]:", rawText);
+        
+        const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
+        const displayErr = isHtml ? `The server returned an HTML error page (Status ${resp.status}). The Edge Function may have crashed.` : rawText;
+        
+        try {
+          const parsedErrJson = JSON.parse(rawText);
+          throw new Error(parsedErrJson.error || parsedErrJson.message || `HTTP ${resp.status}: ${displayErr.slice(0, 300)}`);
+        } catch (_) {
+          throw new Error(displayErr || `HTTP ${resp.status}: Failed running E2E Diagnostics System Test.`);
+        }
       }
 
     } catch (err: any) {
@@ -2178,31 +2287,67 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
         });
 
         const latency = Date.now() - proxyStartTime;
+        
+        let responseText = "";
+        try {
+          responseText = await response.text();
+        } catch (readErr: any) {
+          console.error("[Diagnostics Read Error] Failed to read response stream:", readErr);
+          throw new Error(`Failed to read response stream: ${readErr.message}`);
+        }
+
         if (response.ok) {
-          data = await response.json();
-          success = true;
-          if (userGeminiKey && userGeminiKey.trim()) {
-            logUserKeyRequest("Macro Chart Diagnostics (Proxied)", "/api/analyze-chart", "SUCCESS", latency, "12.8 KB");
+          try {
+            data = JSON.parse(responseText);
+            success = true;
+            if (userGeminiKey && userGeminiKey.trim()) {
+              logUserKeyRequest("Macro Chart Diagnostics (Proxied)", "/api/analyze-chart", "SUCCESS", latency, "12.8 KB");
+            }
+          } catch (jsonErr: any) {
+            console.error("[Diagnostics Parse Error] Server returned HTTP 200 OK but response is not valid JSON:", jsonErr);
+            console.error("[Diagnostics Erroneous Response Text]:", responseText);
+            
+            const isHtml = responseText.toLowerCase().includes("<html") || responseText.toLowerCase().includes("<!doctype html");
+            const errorMessage = isHtml ? "The backend returned an HTML error page. The Supabase Edge Function or Express service may have crashed." : responseText;
+            
+            errPayload = {
+              error: "INVALID_JSON_RESPONSE",
+              details: `Expected JSON, but received: ${errorMessage.slice(0, 500)}`
+            };
           }
         } else {
+          console.error(`[Diagnostics HTTP Error] Server returned HTTP status ${response.status} for analyze-chart.`);
+          console.error("[Diagnostics Error Response Text]:", responseText);
+          
+          const isHtml = responseText.toLowerCase().includes("<html") || responseText.toLowerCase().includes("<!doctype html");
+          const errorMessage = isHtml ? `The backend returned an HTML error page (Status ${response.status}). The Supabase Edge Function may have crashed.` : responseText;
+          
           try {
-            errPayload = await response.json();
+            errPayload = JSON.parse(responseText);
           } catch (_) {
-            errPayload = {};
+            errPayload = {
+              error: `HTTP_ERROR_${response.status}`,
+              details: errorMessage || "The server returned an unparseable error response or crashed."
+            };
           }
-          if (response.status === 429 || (errPayload && errPayload.error === "SHARED_KEYS_EXHAUSTED")) {
+
+          if (response.status === 429 || (errPayload && (errPayload.error === "SHARED_KEYS_EXHAUSTED" || errPayload.details?.includes("SHARED_KEYS_EXHAUSTED")))) {
             setIsKeyPoolExhausted(true);
           }
           if (userGeminiKey && userGeminiKey.trim()) {
             logUserKeyRequest("Macro Chart Diagnostics (Proxied)", "/api/analyze-chart", "FAILED", latency, "0 B");
           }
         }
-      } catch (serverErr) {
+      } catch (serverErr: any) {
         if (userGeminiKey && userGeminiKey.trim()) {
           const latency = Date.now() - proxyStartTime;
           logUserKeyRequest("Macro Chart Diagnostics (Proxied)", "/api/analyze-chart", "FAILED", latency, "0 B");
         }
-        console.warn("Server analyze-chart failed, running direct client fallback with user custom key:", serverErr);
+        console.error("Server analyze-chart fetch threw network exception:", serverErr);
+        errPayload = {
+          error: "NETWORK_EXCEPTION",
+          details: serverErr.message || "A network error occurred while contacting the server."
+        };
       }
 
       // Safe Fallback: Direct client-side Visual Analysis using the user's Gemini Key!
