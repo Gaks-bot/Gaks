@@ -2840,6 +2840,7 @@ ${userRiskComplianceString}`;
 
   // --- AI MARKET WATCHER NEW STATES ---
   const [watcherMarkets, setWatcherMarkets] = useState<any[]>([]);
+  const [watcherLoadError, setWatcherLoadError] = useState<string | null>(null);
 
   const [recentDetections, setRecentDetections] = useState<any[]>([]);
 
@@ -2860,15 +2861,42 @@ ${userRiskComplianceString}`;
   const [watcherActionErrorMsg, setWatcherActionErrorMsg] = useState<string | null>(null);
 
   const fetchWatcherMarkets = async () => {
-    if (!session?.user) return;
+    // Check 6: Diagnostic logs for audit purposes
+    console.log("[Stability Audit] fetchWatcherMarkets diagnostic profile:");
+    console.log("  - Current Authenticated User ID:", session?.user?.id || "N/A (No Session)");
+    console.log("  - Strategy User Context ID (Active Editor Owner):", session?.user?.id || "N/A");
+
+    if (!session?.user) {
+      console.warn("[Stability Audit] Aborted fetchWatcherMarkets: Session is missing or unauthenticated.");
+      return;
+    }
+
+    setWatcherLoadError(null);
+
     try {
+      // Check 1: Verify query is filtered strictly by the user's authenticated ID
       const { data, error } = await supabase
         .from("market_watchers")
         .select("*")
         .eq("user_id", session.user.id)
         .order("id", { ascending: false });
 
-      if (!error && data) {
+      if (error) {
+        // Checks 4 & 5: Wrap loading logic, log issue, show warning, do NOT crash
+        console.error("[Stability Audit] Failed querying market_watchers table:", error);
+        setWatcherLoadError(`System returned: ${error.message || "Unknown database error"}`);
+        return;
+      }
+
+      if (data) {
+        // Check 6: Diagnostic logging for each loaded watcher row owner
+        data.forEach((row, index) => {
+          console.log(`[Stability Audit] Watcher [Row Index ${index}] - id: ${row.id}, Row user_id: ${row.user_id}, Active Login Context user_id: ${session.user.id}`);
+          if (row.user_id !== session.user.id) {
+            console.error(`[CRITICAL SECURITY WARNING] Unauthorized leak: Watcher row user_id ${row.user_id} does not match active session user_id ${session.user.id}!`);
+          }
+        });
+
         const mapped = data.map((item: any) => ({
           id: item.id,
           pair: item.pair,
@@ -2882,14 +2910,23 @@ ${userRiskComplianceString}`;
         }));
         setWatcherMarkets(mapped);
       } else {
-        console.warn("Could not load from Supabase database:", error);
+        console.warn("[Stability Audit] Database response successful but dataset returned empty.");
       }
-    } catch (err) {
-      console.warn("Supabase fetch exception:", err);
+    } catch (err: any) {
+      // Checks 4 & 5: Log error, show warning, do NOT crash
+      console.error("[Stability Audit] Caught exception during fetchWatcherMarkets:", err);
+      setWatcherLoadError(`Exception loading watcher markets database: ${err.message || err}`);
     }
   };
 
+  // Check 9 Flag: Temporarily disable Market Watcher initialization on page load to confirm independent operations
+  const TEMPORARILY_DISABLE_WATCHER_INIT_ON_LOAD = false; // Set to true to bypass initialization
+
   useEffect(() => {
+    if (TEMPORARILY_DISABLE_WATCHER_INIT_ON_LOAD) {
+      console.log("[Stability Audit] Market Watcher load-on-init is disabled via TEMPORARILY_DISABLE_WATCHER_INIT_ON_LOAD toggle.");
+      return;
+    }
     if (session) {
       fetchWatcherMarkets();
     }
@@ -2917,10 +2954,12 @@ ${userRiskComplianceString}`;
     }
 
     try {
+      // Check 1: Verify update mutated row is strictly filtered by the authenticated user's ID
       const { error } = await supabase
         .from("market_watchers")
         .update({ active: nextActive })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("user_id", session?.user?.id || "");
 
       if (error) {
         console.error("Supabase toggle pause error:", error);
@@ -2966,10 +3005,12 @@ ${userRiskComplianceString}`;
     }
 
     try {
+      // Check 1: Verify delete mutated row is strictly filtered by the authenticated user's ID
       const { error } = await supabase
         .from("market_watchers")
         .delete()
-        .eq("id", id);
+        .eq("id", id)
+        .eq("user_id", session?.user?.id || "");
 
       if (error) {
         console.error("Supabase delete error:", error);
@@ -4571,6 +4612,19 @@ Risk Reminder: ${riskReminder}`;
                 <h3 className="text-lg font-bold text-white tracking-tight m-0">
                   Market Watch List
                 </h3>
+
+                {watcherLoadError && (
+                  <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-500/5 text-rose-400 text-xs flex gap-3 items-start">
+                    <i className="ph ph-warning-octagon text-lg text-rose-400 mt-0.5" />
+                    <div className="text-left">
+                      <span className="font-bold block mb-0.5">Stability Alert: Market Watcher sync failed</span>
+                      <span>{watcherLoadError}</span>
+                      <p className="text-[10px] text-neutral-500 mt-1 mb-0 font-mono">
+                        Diagnostics - User: {session?.user?.id || "N/A"} | Mode: Standalone Fallback
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {watcherMarkets.length === 0 ? (
                   <div className="border border-dashed border-neutral-800 rounded-xl p-10 text-center flex flex-col items-center justify-center space-y-2">
