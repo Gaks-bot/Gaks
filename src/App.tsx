@@ -878,7 +878,22 @@ export default function App() {
     explanation?: string;
     timestamp?: string;
     message?: string;
+    step?: string;
   } | null>(null);
+
+  const [adminDiagnostics, setAdminDiagnostics] = useState<{
+    lastResponse: any;
+    lastError: string | null;
+    lastFailedStep: string | null;
+    timestamp: string | null;
+  } | null>(() => {
+    try {
+      const saved = localStorage.getItem("gaks_admin_diagnostics");
+      return saved ? JSON.parse(saved) : null;
+    } catch (_e) {
+      return null;
+    }
+  });
   
   // Adaptive autosave states and hooks
   const [apiSaveStatus, setApiSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -931,7 +946,7 @@ export default function App() {
         id: "utx-002",
         timestamp: new Date(Date.now() - 180000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         action: "Macro Trend Alignment Query",
-        endpoint: "/v1beta/models/gemini-2.5-flash",
+        endpoint: "/v1beta/models/gemini-3.5-flash",
         status: "SUCCESS",
         latency: 1120,
         payloadSize: "1.2 KB"
@@ -940,7 +955,7 @@ export default function App() {
         id: "utx-003",
         timestamp: new Date(Date.now() - 100000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         action: "Visual Edge Delineation",
-        endpoint: "/v1beta/models/gemini-2.5-flash",
+        endpoint: "/v1beta/models/gemini-3.5-flash",
         status: "SUCCESS",
         latency: 1040,
         payloadSize: "2.5 KB"
@@ -949,7 +964,7 @@ export default function App() {
         id: "utx-004",
         timestamp: new Date(Date.now() - 36000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         action: "Cluster Performance Ping",
-        endpoint: "/v1beta/models/gemini-2.5-flash",
+        endpoint: "/v1beta/models/gemini-3.5-flash",
         status: "SUCCESS",
         latency: 1020,
         payloadSize: "124 B"
@@ -1639,27 +1654,27 @@ export default function App() {
     setIsTestingE2E(true);
     setE2eTestResult(null);
     setE2eTestLogs([]);
-
+ 
     const logs: string[] = [];
     const addLog = (msg: string) => {
       logs.push(msg);
       setE2eTestLogs([...logs]);
     };
-
+ 
     try {
       addLog("Fetching market data...");
       await new Promise(resolve => setTimeout(resolve, 600));
-
+ 
       addLog("Loading strategy...");
       await new Promise(resolve => setTimeout(resolve, 600));
-
+ 
       addLog("Sending to Gemini...");
       await new Promise(resolve => setTimeout(resolve, 800));
-
+ 
       addLog("Generating analysis...");
-
+ 
       const adminEmail = session?.user?.email || "gaddt8310@gmail.com";
-
+ 
       console.log("Invoking function: handleEndToEndSystemTest");
       const resp = await fetch("/api/test-end-to-end", {
         method: "POST",
@@ -1672,7 +1687,7 @@ export default function App() {
           adminEmail: adminEmail
         })
       });
-
+ 
       let rawText = "";
       try {
         rawText = await resp.text();
@@ -1680,7 +1695,7 @@ export default function App() {
         console.error("[E2E Test] Failed to read response body text:", readErr);
         throw new Error(`Failed to read response body text: ${readErr.message}`);
       }
-
+ 
       let data: any = null;
       if (resp.ok) {
         try {
@@ -1690,14 +1705,26 @@ export default function App() {
           console.error("[E2E Test Err Response Text]:", rawText);
           const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
           const displayErr = isHtml ? "The backend returned an HTML error page. The Supabase Edge Function or server may have crashed." : rawText;
-          throw new Error(`Failed to parse server response as JSON. Received text: ${displayErr.slice(0, 300)}`);
+          const jsonFailErr = new Error(`Failed to parse server response as JSON. Received text: ${displayErr.slice(0, 300)}`);
+          (jsonFailErr as any).step = "Parsing response";
+          throw jsonFailErr;
         }
-
+ 
         if (data && data.success === true && data.data) {
           addLog("Sending email...");
           await new Promise(resolve => setTimeout(resolve, 700));
-
+ 
           addLog("Test completed successfully.");
+          const rightNowISO = new Date().toISOString();
+          const diagnosticsObj = {
+            lastResponse: data,
+            lastError: null,
+            lastFailedStep: null,
+            timestamp: rightNowISO
+          };
+          setAdminDiagnostics(diagnosticsObj);
+          localStorage.setItem("gaks_admin_diagnostics", JSON.stringify(diagnosticsObj));
+
           setE2eTestResult({
             status: "success",
             pair: data.data.pair,
@@ -1706,10 +1733,12 @@ export default function App() {
             geminiResult: data.data.result,
             confidence: data.data.confidence,
             explanation: data.data.explanation,
-            timestamp: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC"
+            timestamp: rightNowISO.replace("T", " ").substring(0, 19) + " UTC"
           });
         } else {
-          throw new Error(data?.error || "Diagnostics endpoint returned an error status in payload.");
+          const payloadErr = new Error(data?.error || "Diagnostics endpoint returned an error status in payload.");
+          (payloadErr as any).step = data?.step || "Diagnostics Flow";
+          throw payloadErr;
         }
       } else {
         console.error(`[E2E Test] Server returned HTTP error status ${resp.status}`);
@@ -1718,20 +1747,39 @@ export default function App() {
         const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
         const displayErr = isHtml ? `The server returned an HTML error page (Status ${resp.status}). The Edge Function may have crashed.` : rawText;
         
+        let parsedErrJson: any = null;
         try {
-          const parsedErrJson = JSON.parse(rawText);
-          throw new Error(parsedErrJson.error || parsedErrJson.message || `HTTP ${resp.status}: ${displayErr.slice(0, 300)}`);
+          parsedErrJson = JSON.parse(rawText);
         } catch (_) {
-          throw new Error(displayErr || `HTTP ${resp.status}: Failed running E2E Diagnostics System Test.`);
+          // No valid JSON body
         }
-      }
 
+        const httpErr = new Error(parsedErrJson?.error || parsedErrJson?.message || displayErr || `HTTP ${resp.status}: Failed running E2E Diagnostics System Test.`);
+        (httpErr as any).step = parsedErrJson?.step || "Server Runtime Exception";
+        throw httpErr;
+      }
+ 
     } catch (err: any) {
       console.error("E2E System Test failed:", err);
       addLog(`❌ Diagnostics failed: ${err.message || "Network error"}`);
+      
+      const failedStep = err.step || "E2E Stage Failure";
+      const errorMsg = err.message || "System integration check failed. Please check server environment logs.";
+      const rightNowISO = new Date().toISOString();
+
+      const diagnosticsObj = {
+        lastResponse: null,
+        lastError: errorMsg,
+        lastFailedStep: failedStep,
+        timestamp: rightNowISO
+      };
+      setAdminDiagnostics(diagnosticsObj);
+      localStorage.setItem("gaks_admin_diagnostics", JSON.stringify(diagnosticsObj));
+
       setE2eTestResult({
         status: "error",
-        message: err.message || "System integration check failed. Please check server environment logs."
+        step: failedStep,
+        message: errorMsg
       });
     } finally {
       setIsTestingE2E(false);
@@ -1847,7 +1895,7 @@ export default function App() {
 
       const clientStartTime = Date.now();
       try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
         const geminiRes = await fetch(geminiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1861,17 +1909,17 @@ export default function App() {
         const latency = Date.now() - clientStartTime;
         if (geminiRes.ok) {
           setKeyTestResult({ success: true, message: "Direct verification handshake succeeded. Key is active and authorized!" });
-          logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-2.5-flash", "SUCCESS", latency, "250 B");
+          logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-3.5-flash", "SUCCESS", latency, "250 B");
         } else {
           const geminiErrData = await geminiRes.json().catch(() => ({}));
           const apiErrorMsg = geminiErrData?.error?.message || `Google API returned status code ${geminiRes.status}`;
           setKeyTestResult({ success: false, message: apiErrorMsg });
-          logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-2.5-flash", "FAILED", latency, "250 B");
+          logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "250 B");
         }
       } catch (clientErr: any) {
         const latency = Date.now() - clientStartTime;
         setKeyTestResult({ success: false, message: clientErr.message || "Direct handshake failed. Please check network connectivity and details." });
-        logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-2.5-flash", "FAILED", latency, "0 B");
+        logUserKeyRequest("Direct Client Handshake", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
       }
     } else {
       setKeyTestResult({ success: true, message: data.message || "Handshake succeeded!" });
@@ -1962,7 +2010,7 @@ export default function App() {
             const clientStartTime = Date.now();
 
             try {
-              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
+              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
               const geminiRes = await fetch(geminiUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -2008,14 +2056,14 @@ Return your findings in the requested JSON structure. No markdown formatting.`
                 if (fileMatch && (!data.symbol || data.symbol === "EURUSD" || data.symbol.toUpperCase().includes("CAD"))) {
                   data.symbol = fileMatch;
                 }
-                logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-2.5-flash", "SUCCESS", latency, "350 B");
+                logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-3.5-flash", "SUCCESS", latency, "350 B");
               } else {
-                logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-2.5-flash", "FAILED", latency, "0 B");
+                logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
                 throw new Error(`Google API returned status code ${geminiRes.status}`);
               }
             } catch (fallbackErr: any) {
               const latency = Date.now() - clientStartTime;
-              logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-2.5-flash", "FAILED", latency, "0 B");
+              logUserKeyRequest("Visual Symbol Detection", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
               throw fallbackErr;
             }
           }
@@ -2649,7 +2697,7 @@ ${userRiskComplianceString}`;
         }
 
         const fallbackStartTime = Date.now();
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(userGeminiKey.trim())}`;
         const geminiRes = await fetch(geminiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2697,11 +2745,11 @@ ${userRiskComplianceString}`;
           const textContent = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
           data = JSON.parse(textContent);
           success = true;
-          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-2.5-flash", "SUCCESS", latency, "12.5 KB");
+          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-3.5-flash", "SUCCESS", latency, "12.5 KB");
         } else {
           const mData = await geminiRes.json().catch(() => ({}));
           const apiErrorMsg = mData?.error?.message || `Google API returned status code ${geminiRes.status}`;
-          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-2.5-flash", "FAILED", latency, "0 B");
+          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
           throw new Error(apiErrorMsg);
         }
       }
@@ -6575,16 +6623,78 @@ Risk Reminder: ${riskReminder}`;
                             </div>
                           </div>
                         ) : (
-                          <div className="p-3 bg-[#110505] border border-red-950 text-red-400 rounded-lg text-xs font-semibold flex flex-col gap-1">
-                            <div className="flex items-center gap-1.5 font-bold">
+                          <div className="p-3 bg-[#110505] border border-red-950 text-red-400 rounded-lg text-xs font-semibold flex flex-col gap-2">
+                            <div className="flex items-center gap-1.5 font-bold border-b border-red-950/40 pb-1.5">
                               <i className="ph ph-warning text-sm text-red-500" />
                               <span>E2E Stage Failure Found</span>
                             </div>
-                            <span className="text-[10px] font-mono text-white/50 font-normal leading-normal mt-0.5">
-                              {e2eTestResult.message}
-                            </span>
+                            {e2eTestResult.step && (
+                              <div>
+                                <span className="text-white/40 block text-[9px] uppercase font-bold tracking-wider mb-0.5">Failed Step:</span>
+                                <span className="text-rose-400 font-mono text-[10px] bg-red-950/20 px-1.5 py-0.5 rounded border border-red-950/50 block w-fit">{e2eTestResult.step}</span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-white/40 block text-[9px] uppercase font-bold tracking-wider mb-0.5">Error:</span>
+                              <span className="text-[10px] font-mono text-white/70 font-normal leading-relaxed block bg-black/10 p-1.5 rounded border border-white/5">
+                                {e2eTestResult.message}
+                              </span>
+                            </div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Admin Diagnostics Panel */}
+                    {adminDiagnostics && (
+                      <div className="mt-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/[0.02] space-y-3">
+                        <div className="flex items-center justify-between border-b border-amber-500/10 pb-1.5">
+                          <span className="flex items-center gap-1.5 text-amber-500 font-bold text-[10px] uppercase tracking-wider">
+                            <i className="ph ph-cpu text-xs animate-pulse" />
+                            System Diagnostics Panel
+                          </span>
+                          <button 
+                            onClick={() => {
+                              localStorage.removeItem("gaks_admin_diagnostics");
+                              setAdminDiagnostics(null);
+                            }}
+                            className="text-[9px] text-white/30 hover:text-rose-400 transition"
+                            title="Clear History"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div className="space-y-2.5 text-[10px] font-mono text-white/70">
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-white/40 font-semibold uppercase text-[8px] tracking-wider pt-0.5">Timestamp</span>
+                            <span className="text-right text-amber-500/80 font-bold">{new Date(adminDiagnostics.timestamp || "").toLocaleString()}</span>
+                          </div>
+                          
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-white/40 font-semibold uppercase text-[8px] tracking-wider pt-0.5">Last Failed Step</span>
+                            <span className={`text-right px-1 rounded ${adminDiagnostics.lastFailedStep ? "text-rose-400 font-bold bg-rose-500/10" : "text-emerald-400 font-bold bg-emerald-500/10"}`}>
+                              {adminDiagnostics.lastFailedStep || "None (Success)"}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-white/40 font-semibold uppercase text-[8px] tracking-wider pt-0.5">Last Error</span>
+                            <span className="text-right text-rose-300 max-w-[200px] break-words">
+                              {adminDiagnostics.lastError || "None"}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5 pt-2 border-t border-white/5">
+                            <span className="text-white/40 font-semibold uppercase text-[8px] tracking-wider">Last Function Response</span>
+                            <pre className="p-2.5 rounded bg-black/50 border border-white/5 text-[9px] text-[#A7F3D0] max-h-[150px] overflow-y-auto whitespace-pre-wrap break-all leading-tight">
+                              {adminDiagnostics.lastResponse 
+                                ? JSON.stringify(adminDiagnostics.lastResponse, null, 2)
+                                : adminDiagnostics.lastError 
+                                ? JSON.stringify({ success: false, step: adminDiagnostics.lastFailedStep, error: adminDiagnostics.lastError }, null, 2)
+                                : "{}"}
+                            </pre>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

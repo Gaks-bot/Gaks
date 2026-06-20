@@ -16,10 +16,27 @@ serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  console.log("[Market Scanner] Beginning edge function execution log...");
-
+  let currentStep = "Request received";
   try {
-    // 1. Initialize Supabase Client using local environment variables
+    currentStep = "Request received";
+    console.log("Step 1: Request received");
+
+    currentStep = "Parsing request";
+    console.log("Step 2: Parsing request");
+    // Parse body/query parameters if they are provided
+    let triggerBody: any = {};
+    if (req.body) {
+      try {
+        const text = await req.clone().text();
+        if (text) {
+          triggerBody = JSON.parse(text);
+        }
+      } catch (_e) {
+        // Safe fallback in case request isn't JSON or body already parsed
+      }
+    }
+
+    // Initialize Supabase Client using local environment variables
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -30,7 +47,10 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 2. Query all active market_watchers
+    currentStep = "Loading strategy";
+    console.log("Step 3: Loading strategy");
+
+    // Query all active market_watchers
     const { data: watchers, error: watcherErr } = await supabase
       .from("market_watchers")
       .select("*")
@@ -49,7 +69,8 @@ serve(async (req: Request) => {
         const { id: watcherId, user_id: userId, email, pair, timeframe, strategy } = watcher;
         console.log(`[Watcher ID: ${watcherId}] User: ${userId} (${email}) | Pair: ${pair} | Timeframe: ${timeframe} | Strategy: ${strategy}`);
 
-        // 3. Load user's Gemini API key from Supabase
+
+        // Load user's Gemini API key from Supabase
         const { data: keyRecord, error: keyErr } = await supabase
           .from("user_api_keys")
           .select("gemini_api_key")
@@ -84,7 +105,10 @@ serve(async (req: Request) => {
           continue;
         }
 
-        // 4. Fetch the latest market candles from Twelve Data
+        currentStep = "Calling Twelve Data";
+        console.log("Step 4: Calling Twelve Data");
+
+        // Fetch the latest market candles from Twelve Data
         let candles = [];
         const twelveKey = Deno.env.get("TWELVE_DATA_API_KEY") || Deno.env.get("TWELVEDATA_API_KEY");
         const intervalMapped = mapTimeframeToTwelveData(timeframe);
@@ -95,7 +119,17 @@ serve(async (req: Request) => {
             const pairClean = pair.replace("/", "");
             const url = `https://api.twelvedata.com/time_series?symbol=${pairClean}&interval=${intervalMapped}&apikey=${twelveKey}&outputsize=20`;
             const resp = await fetch(url);
+            if (!resp.ok) {
+              const errTxt = await resp.text();
+              console.error(`Twelve Data failed API call: Status Code = ${resp.status}, Response = ${errTxt}, Endpoint = Twelve Data API`);
+              throw new Error(`Twelve Data HTTP Error: ${resp.status} ${resp.statusText}`);
+            }
+
             const rawData = await resp.json();
+            if (rawData && rawData.status === "error") {
+              console.error(`Twelve Data failed API call: Status Code = 200 (error body), Response = ${JSON.stringify(rawData)}, Endpoint = Twelve Data API`);
+              throw new Error(`Twelve Data API Error: ${rawData.message}`);
+            }
             
             if (rawData && rawData.values && rawData.values.length > 0) {
               candles = rawData.values;
@@ -104,16 +138,19 @@ serve(async (req: Request) => {
               console.warn(`[Watcher ID: ${watcherId}] Twelve Data returned empty or invalid response. Creating simulation fallback candles.`);
               candles = generateFallbackCandles(pair);
             }
-          } catch (fetchErr) {
+          } catch (fetchErr: any) {
             console.error(`[Watcher ID: ${watcherId}] Twelve Data network error:`, fetchErr);
-            candles = generateFallbackCandles(pair);
+            throw fetchErr;
           }
         } else {
           console.log(`[Watcher ID: ${watcherId}] Twelve Data API Key is not set in environments. Generating high-fidelity dummy candles to support preview testing.`);
           candles = generateFallbackCandles(pair);
         }
 
-        // 5 & 6. Submit candlestick data to Gemini API for setup evaluation
+        currentStep = "Calling Gemini";
+        console.log("Step 5: Calling Gemini");
+
+        // Submit candlestick data to Gemini API for setup evaluation
         let geminiVerdict = "NO_TRADE_SETUP";
         let confidenceScore = 0;
         let isValidKey = true;
@@ -136,10 +173,14 @@ serve(async (req: Request) => {
             errMsg.includes("API_KEY_INVALID")
           ) {
             isValidKey = false;
+          } else {
+            // For other transient errors, log and proceed without crashing
+            console.warn(`[Watcher ID: ${watcherId}] Gemini encountered transient error. Skipping watcher loop iteration.`);
+            continue;
           }
         }
 
-        // 9. Handle invalid keys gracefully
+        // Handle invalid keys gracefully
         if (!isValidKey) {
           console.warn(`[Watcher ID: ${watcherId}] Invalid Gemini API key detected! Marking watcher as inactive.`);
           
@@ -169,9 +210,8 @@ serve(async (req: Request) => {
           confidence: confidenceScore
         });
 
-        // 7 & Resend: If Gemini returns BUY_SETUP or SELL_SETUP
+        // Loop actions forBUY_SETUP or SELL_SETUP
         if (geminiVerdict === "BUY_SETUP" || geminiVerdict === "SELL_SETUP") {
-          // Prevent duplicate notifications using last_alert_sent (DB & In-memory cache checks)
           const dbLastSent = watcher.last_alert_sent ? new Date(watcher.last_alert_sent).getTime() : 0;
           const memoryLastSent = inMemoryLastAlertSent.get(String(watcherId)) || 0;
           const finalLastSent = Math.max(dbLastSent, memoryLastSent);
@@ -184,7 +224,6 @@ serve(async (req: Request) => {
             const setupLabel = geminiVerdict === "BUY_SETUP" ? "Bullish Reversal Setup" : "Bearish Redistribution Setup";
             const notificationMsg = `⚠️ Institutional Smart Money Alert: A high-probability ${setupLabel} was detected on ${pair} (${timeframe}) using ${strategy} with ${confidenceScore}% confidence.`;
             
-            // Register notification in the database
             await registerNotification(
               supabase,
               userId,
@@ -195,7 +234,9 @@ serve(async (req: Request) => {
               notificationMsg
             );
 
-            // Connect market-scanner to Resend notifications
+            currentStep = "Sending Resend email";
+            console.log("Step 6: Sending Resend email");
+
             const resendApiKey = Deno.env.get("Resend_key") || Deno.env.get("RESEND_API_KEY") || Deno.env.get("resend_key");
             if (resendApiKey) {
               console.log(`[Watcher ID: ${watcherId}] Dispatching email alert to ${email || "user"} via Resend...`);
@@ -209,7 +250,6 @@ serve(async (req: Request) => {
               );
 
               if (sentResult) {
-                // After successful delivery: update last_alert_sent
                 const rightNowISO = new Date().toISOString();
                 inMemoryLastAlertSent.set(String(watcherId), Date.now());
 
@@ -220,9 +260,7 @@ serve(async (req: Request) => {
                     .eq("id", watcherId);
                   
                   if (updErr) {
-                    console.warn(`[Watcher ID: ${watcherId}] Soft Warning - last_alert_sent can't be stored in DB (column may not exist): ${updErr.message}`);
-                  } else {
-                    console.log(`[Watcher ID: ${watcherId}] Successfully updated last_alert_sent in database.`);
+                    console.warn(`[Watcher ID: ${watcherId}] Soft Warning - last_alert_sent can't be stored in DB: ${updErr.message}`);
                   }
                 } catch (dbErr: any) {
                   console.warn(`[Watcher ID: ${watcherId}] Soft Warning - Failed to update last_alert_sent in DB:`, dbErr.message);
@@ -236,17 +274,38 @@ serve(async (req: Request) => {
       }
     }
 
-    console.log("[Market Scanner] Edge Function execution complete. Sending payload report.");
+    currentStep = "Completed";
+    console.log("Step 7: Completed");
+
     return new Response(
-      JSON.stringify({ success: true, processed_count: watchers?.length || 0, scanned_setups: processedSetups }),
+      JSON.stringify({ 
+        success: true, 
+        data: { 
+          processed_count: watchers?.length || 0, 
+          scanned_setups: processedSetups 
+        } 
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
-  } catch (err: any) {
-    console.error("[Market Scanner Terminal Error]", err);
+  } catch (error: any) {
+    console.error("FULL ERROR:", error);
+    console.error("STACK:", error?.stack);
+
     return new Response(
-      JSON.stringify({ error: err.message || "An internal error occurred." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        success: false,
+        step: currentStep,
+        error: error.message || "An unexpected error occurred during execution.",
+        stack: error.stack
+      }),
+      {
+        status: 500,
+        headers: { 
+          ...corsHeaders,
+          "Content-Type": "application/json" 
+        }
+      }
     );
   }
 });
@@ -306,7 +365,7 @@ async function runGeminiAnalysis(
   strategy: string, 
   candles: any[]
 ): Promise<{ verdict: string; confidence: number }> {
-  const modelName = "gemini-2.5-flash";
+  const modelName = "gemini-3.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   const candlesText = candles.map(c => `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`).join("\n");
