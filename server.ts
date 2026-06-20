@@ -2246,7 +2246,8 @@ ${userRiskComplianceString}`;
 
   // Vite middleware for development (Skip completely in Vercel to preserve cold-start speeds and sandbox safety)
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const { createServer: createViteServer } = await import("vite");
+    const vitePackageName = "vite";
+    const { createServer: createViteServer } = await import(vitePackageName);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
