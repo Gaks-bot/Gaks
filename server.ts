@@ -85,7 +85,7 @@ function ensureWordRange(text: string, maxWords = 25): string {
   return text;
 }
 
-async function startServer() {
+function startServer() {
   const app = express();
   const PORT = 3000;
 
@@ -2247,12 +2247,18 @@ ${userRiskComplianceString}`;
   // Vite middleware for development (Skip completely in Vercel to preserve cold-start speeds and sandbox safety)
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const vitePackageName = "vite";
-    const { createServer: createViteServer } = await import(vitePackageName);
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+    import(vitePackageName).then(({ createServer: createViteServer }) => {
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      }).then(vite => {
+        app.use(vite.middlewares);
+      }).catch(err => {
+        console.error("Vite server creation failed:", err);
+      });
+    }).catch(err => {
+      console.error("Vite dynamic import failed:", err);
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -2269,4 +2275,4 @@ ${userRiskComplianceString}`;
   return app;
 }
 
-export const appPromise = startServer();
+export const app = startServer();
