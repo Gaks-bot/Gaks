@@ -946,7 +946,7 @@ export default function App() {
         id: "utx-002",
         timestamp: new Date(Date.now() - 180000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         action: "Macro Trend Alignment Query",
-        endpoint: "/v1beta/models/gemini-3.5-flash",
+        endpoint: "/v1beta/models/gemini-2.1-flash",
         status: "SUCCESS",
         latency: 1120,
         payloadSize: "1.2 KB"
@@ -955,7 +955,7 @@ export default function App() {
         id: "utx-003",
         timestamp: new Date(Date.now() - 100000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         action: "Visual Edge Delineation",
-        endpoint: "/v1beta/models/gemini-3.5-flash",
+        endpoint: "/v1beta/models/gemini-2.1-flash",
         status: "SUCCESS",
         latency: 1040,
         payloadSize: "2.5 KB"
@@ -964,7 +964,7 @@ export default function App() {
         id: "utx-004",
         timestamp: new Date(Date.now() - 36000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         action: "Cluster Performance Ping",
-        endpoint: "/v1beta/models/gemini-3.5-flash",
+        endpoint: "/v1beta/models/gemini-2.1-flash",
         status: "SUCCESS",
         latency: 1020,
         payloadSize: "124 B"
@@ -2658,11 +2658,11 @@ ${userRiskComplianceString}`;
           const textContent = resData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
           data = JSON.parse(textContent);
           success = true;
-          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-3.5-flash", "SUCCESS", latency, "12.5 KB");
+          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-2.1-flash", "SUCCESS", latency, "12.5 KB");
         } else {
           const mData = await geminiRes.json().catch(() => ({}));
           const apiErrorMsg = mData?.error?.message || `Google API returned status code ${geminiRes.status}`;
-          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-3.5-flash", "FAILED", latency, "0 B");
+          logUserKeyRequest("Macro Chart Diagnostics (Direct)", "/v1beta/models/gemini-2.1-flash", "FAILED", latency, "0 B");
           throw new Error(apiErrorMsg);
         }
       }
@@ -6397,7 +6397,7 @@ Risk Reminder: ${riskReminder}`;
                   </div>
                   
                   <p className="text-[11px] text-white/60 mb-4 leading-relaxed">
-                    Fetches real-time candles from Twelve Data and pushes them into Gemini 3.5 Flash for model verification. Returns trade setups with trace logs.
+                    Fetches real-time candles from Twelve Data and pushes them into Gemini 2.1 Flash for model verification. Returns trade setups with trace logs.
                   </p>
 
                   <div className="space-y-3">

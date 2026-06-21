@@ -21,7 +21,7 @@ This document outlines the decentralized enterprise architecture for the trading
         +----------------------------------+                   +----------------------------------+
         |  Instant Direct Client Handshake |                   |  Secure Supabase Proxy Gateway   |
         |  - Bypasses public limits        |                   |  - Requests throttled & proxy'd  |
-        |  - Gemini API (gemini-3.5-flash) |                   |  - SSL / TLS Encrypted Stream    |
+        |  - Gemini API (gemini-2.1-flash) |                   |  - SSL / TLS Encrypted Stream    |
         +-----------------+----------------+                   +-----------------+----------------+
                           |                                                      |
                           |                                                      v
@@ -184,7 +184,7 @@ serve(async (req: Request) => {
     - Strategy Alignment: ${strategy || "Pattern Confluence Checks"}
     You must return a valid JSON object strictly matching these keys: "signal" (BUY / SELL / HOLD), "level" (estimated entry zone), "tp" (Take Profit target), "sl" (Stop Loss target), "confidence" (e.g. 85%), "reason" (a well-formatted Markdown summary).`
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${activeKey}`
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.1-flash:generateContent?key=${activeKey}`
 
     const response = await fetch(geminiUrl, {
       method: "POST",

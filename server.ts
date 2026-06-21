@@ -1007,7 +1007,7 @@ ${icon} ${stateName}`;
     maxRetries = 3
   ): Promise<T> {
     let attempt = 0;
-    const modelCandidates = ["gemini-3.5-flash", "gemini-flash-latest"];
+    const modelCandidates = ["gemini-2.1-flash", "gemini-flash-latest"];
     while (true) {
       const currentModel = modelCandidates[attempt % modelCandidates.length];
       try {
@@ -1117,7 +1117,7 @@ ${icon} ${stateName}`;
       if (isUserKeyMock) {
         console.log("[Gemini Engine] Intercepted mock custom user personal key. Supplying sandbox simulation.");
         const mockAi = createMockGoogleGenAI();
-        const result = await apiExecutor(mockAi as unknown as GoogleGenAI, "gemini-3.5-flash");
+        const result = await apiExecutor(mockAi as unknown as GoogleGenAI, "gemini-2.1-flash");
         return { result, keySource: "user_personal_mock_simulation", keyIndex: -1 };
       } else {
         console.log("[Gemini Engine] Using custom user-provided API key from client vault.");
@@ -1248,7 +1248,7 @@ ${icon} ${stateName}`;
       } else {
         console.log("[Backup Recovery] Running mock key sandbox backup simulation as absolute last resort.");
         const mockAi = createMockGoogleGenAI() as unknown as GoogleGenAI;
-        const result = await apiExecutor(mockAi, "gemini-3.5-flash");
+        const result = await apiExecutor(mockAi, "gemini-2.1-flash");
         return { result, keySource: "Backup Recovery Simulation", keyIndex: 0 };
       }
     }
@@ -1415,7 +1415,7 @@ ${candlesText}`;
 
             const ai = new GoogleGenAI({ apiKey: userKey });
             const response = await ai.models.generateContent({
-              model: "gemini-3.5-flash",
+              model: "gemini-2.1-flash",
               contents: prompt,
               config: {
                 temperature: 0.1,
@@ -1789,7 +1789,7 @@ ${candlesText}`;
       });
 
       await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.1-flash",
         contents: "Return 'OK'",
       });
 

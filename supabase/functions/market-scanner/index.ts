@@ -365,7 +365,7 @@ async function runGeminiAnalysis(
   strategy: string, 
   candles: any[]
 ): Promise<{ verdict: string; confidence: number }> {
-  const modelName = "gemini-3.5-flash";
+  const modelName = "gemini-2.1-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   const candlesText = candles.map(c => `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`).join("\n");
