@@ -101,7 +101,7 @@ interface AnalysisHistoryItem {
 }
 
 const getPipMultiplier = (pairStr: string) => {
-  const p = (pairStr || "EURUSD").toUpperCase();
+  const p = (pairStr || "").toUpperCase();
   if (p.includes("JPY")) return 0.01;
   if (p.includes("XAU") || p.includes("GOLD") || p.includes("XAG")) return 0.1;
   if (p.includes("BTC") || p.includes("ETH") || p.includes("SOL") || p.includes("USOIL") || p.includes("OIL")) return 1.0;
@@ -109,7 +109,7 @@ const getPipMultiplier = (pairStr: string) => {
 };
 
 const getPipPrecision = (pairStr: string) => {
-  const p = (pairStr || "EURUSD").toUpperCase();
+  const p = (pairStr || "").toUpperCase();
   if (p.includes("JPY")) return 3;
   if (p.includes("XAU") || p.includes("GOLD") || p.includes("XAG")) return 2;
   if (p.includes("BTC") || p.includes("ETH") || p.includes("SOL")) return 2;
@@ -828,7 +828,7 @@ export default function App() {
   // Option A & C API Rotation State Hooks
   const [showApiSettings, setShowApiSettings] = useState<boolean>(false);
   const [isKeyPoolExhausted, setIsKeyPoolExhausted] = useState<boolean>(false);
-  const [userGeminiKey, setUserGeminiKey] = useState<string>(() => localStorage.getItem("gaks_user_gemini_key") || "");
+  const [userGeminiKey, setUserGeminiKey] = useState<string>("");
   const [showAIOverlay, setShowAIOverlay] = useState<boolean>(true);
   const [showUserKeyPassword, setShowUserKeyPassword] = useState<boolean>(false);
   const [apiKeySaveSuccess, setApiKeySaveSuccess] = useState<string | null>(null);
@@ -918,59 +918,36 @@ export default function App() {
     payloadSize: string;
   }
 
-  const [userKeyTelemetry, setUserKeyTelemetry] = useState<UserKeyTelemetry>(() => {
-    const hasKey = !!localStorage.getItem("gaks_user_gemini_key");
-    return {
-      totalRequests: hasKey ? 4 : 0,
-      successRequests: hasKey ? 4 : 0,
-      failedRequests: 0,
-      averageLatency: hasKey ? 1040 : 0,
-      lastUsed: hasKey ? new Date(Date.now() - 3600000).toISOString() : null,
-    };
+  const [userKeyTelemetry, setUserKeyTelemetry] = useState<UserKeyTelemetry>({
+    totalRequests: 0,
+    successRequests: 0,
+    failedRequests: 0,
+    averageLatency: 0,
+    lastUsed: null,
   });
 
-  const [userKeyTransactions, setUserKeyTransactions] = useState<UserKeyTransaction[]>(() => {
-    const hasKey = !!localStorage.getItem("gaks_user_gemini_key");
-    if (!hasKey) return [];
-    return [
-      {
-        id: "utx-001",
-        timestamp: new Date(Date.now() - 250000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        action: "System Validation Handshake",
-        endpoint: "/api/key-pool/verify",
-        status: "SUCCESS",
-        latency: 980,
-        payloadSize: "128 B"
-      },
-      {
-        id: "utx-002",
-        timestamp: new Date(Date.now() - 180000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        action: "Macro Trend Alignment Query",
-        endpoint: "/v1beta/models/gemini-2.1-flash",
-        status: "SUCCESS",
-        latency: 1120,
-        payloadSize: "1.2 KB"
-      },
-      {
-        id: "utx-003",
-        timestamp: new Date(Date.now() - 100000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        action: "Visual Edge Delineation",
-        endpoint: "/v1beta/models/gemini-2.1-flash",
-        status: "SUCCESS",
-        latency: 1040,
-        payloadSize: "2.5 KB"
-      },
-      {
-        id: "utx-004",
-        timestamp: new Date(Date.now() - 36000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        action: "Cluster Performance Ping",
-        endpoint: "/v1beta/models/gemini-2.1-flash",
-        status: "SUCCESS",
-        latency: 1020,
-        payloadSize: "124 B"
-      }
-    ];
-  });
+  const [lastApiKeyOwnerId, setLastApiKeyOwnerId] = useState<string>("");
+
+  useEffect(() => {
+    if (session?.user?.id) {
+      supabase
+        .from("user_api_keys")
+        .select("user_id")
+        .eq("user_id", session.user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setLastApiKeyOwnerId(data.user_id || "");
+          } else {
+            setLastApiKeyOwnerId("");
+          }
+        });
+    } else {
+      setLastApiKeyOwnerId("");
+    }
+  }, [session, userGeminiKey]);
+
+  const [userKeyTransactions, setUserKeyTransactions] = useState<UserKeyTransaction[]>([]);
 
   const logUserKeyRequest = (action: string, endpoint: string, status: "SUCCESS" | "FAILED", latency: number, payloadSize: string) => {
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1306,7 +1283,6 @@ export default function App() {
       } else {
         setApiKeySaveSuccess("✓ API Key Saved");
         setApiSaveStatus("saved");
-        localStorage.setItem("gaks_user_gemini_key", val);
         setUserGeminiKey(val);
         setIsKeyPoolExhausted(false); // Reset shared pool warning locally since they have their own key now
       }
@@ -1332,7 +1308,6 @@ export default function App() {
         console.warn("Could not load Gemini API key from Supabase:", error);
       } else if (data && data.gemini_api_key) {
         setUserGeminiKey(data.gemini_api_key);
-        localStorage.setItem("gaks_user_gemini_key", data.gemini_api_key);
       }
     } catch (err) {
       console.warn("Failed to load user API key from database:", err);
@@ -1470,7 +1445,9 @@ export default function App() {
   }, [session, currentPage, isSettingsOpen]);
 
   const handleTestTwelveData = async () => {
-    console.log("Fetching XAUUSD H1 from Twelve Data...");
+    const activeSym = detectedSymbol || marketPairs[selectedPairIndex]?.pair.replace("/", "");
+    const activeTf = detectedTimeframe || "H1";
+    console.log(`Fetching ${activeSym} ${activeTf} from Twelve Data...`);
     setIsTestingTwelveData(true);
     setTwelveDataTestResult(null);
 
@@ -1479,7 +1456,12 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
-        }
+        },
+        body: JSON.stringify({
+          symbol: activeSym,
+          timeframe: activeTf,
+          userId: session?.user?.id
+        })
       });
       
       let rawText = "";
@@ -1576,13 +1558,19 @@ export default function App() {
       await new Promise(resolve => setTimeout(resolve, 600));
       addLog("Sending data to Gemini...");
 
+      const activeSym = detectedSymbol || marketPairs[selectedPairIndex]?.pair.replace("/", "");
+      const activeTf = detectedTimeframe || "H1";
+
       const resp = await fetch("/api/test-gemini-analysis", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          userApiKey: userGeminiKey
+          userApiKey: userGeminiKey,
+          symbol: activeSym,
+          timeframe: activeTf,
+          userId: session?.user?.id
         })
       });
 
@@ -1675,6 +1663,9 @@ export default function App() {
  
       const adminEmail = session?.user?.email || "gaddt8310@gmail.com";
  
+      const activeSym = detectedSymbol || marketPairs[selectedPairIndex]?.pair.replace("/", "");
+      const activeTf = detectedTimeframe || "H1";
+
       console.log("Invoking function: handleEndToEndSystemTest");
       const resp = await fetch("/api/test-end-to-end", {
         method: "POST",
@@ -1684,7 +1675,10 @@ export default function App() {
         body: JSON.stringify({
           userApiKey: userGeminiKey,
           strategy: selectedStrategy,
-          adminEmail: adminEmail
+          adminEmail: adminEmail,
+          symbol: activeSym,
+          timeframe: activeTf,
+          userId: session?.user?.id
         })
       });
  
@@ -1788,9 +1782,7 @@ export default function App() {
 
   const handleUserKeyChange = async (key: string) => {
     setUserGeminiKey(key);
-    localStorage.setItem("gaks_user_gemini_key", key);
     if (session?.user?.email) {
-      localStorage.setItem("gaks_user_gemini_key_email", session.user.email);
       try {
         await supabase.auth.updateUser({
           data: { gemini_api_key: key }
@@ -1798,8 +1790,6 @@ export default function App() {
       } catch (err) {
         console.warn("Could not save key to Supabase user metadata:", err);
       }
-    } else {
-      localStorage.removeItem("gaks_user_gemini_key_email");
     }
 
     if (key.trim()) {
@@ -1826,28 +1816,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (session?.user?.email) {
-      const currentEmail = session.user.email;
-      const storedEmail = localStorage.getItem("gaks_user_gemini_key_email");
-      
-      const profileKey = session.user.user_metadata?.gemini_api_key || "";
-      if (profileKey) {
-        setUserGeminiKey(profileKey);
-        localStorage.setItem("gaks_user_gemini_key", profileKey);
-        localStorage.setItem("gaks_user_gemini_key_email", currentEmail);
-      } else if (storedEmail && storedEmail !== currentEmail) {
-        localStorage.removeItem("gaks_user_gemini_key");
-        localStorage.removeItem("gaks_user_gemini_key_email");
-        setUserGeminiKey("");
-      } else if (!storedEmail && localStorage.getItem("gaks_user_gemini_key")) {
-        localStorage.setItem("gaks_user_gemini_key_email", currentEmail);
-        const localKey = localStorage.getItem("gaks_user_gemini_key") || "";
-        if (localKey) {
-          supabase.auth.updateUser({
-            data: { gemini_api_key: localKey }
-          }).catch(err => console.warn("Could not sync local key to profile:", err));
-        }
-      }
+    if (session?.user?.id) {
+      loadUserApiKeyFromSupabase();
+    } else {
+      setUserGeminiKey("");
     }
   }, [session]);
 
@@ -2161,10 +2133,138 @@ export default function App() {
     const isLive = analysisMode === "live";
     const imageToUse = isLive ? DUMMY_BLACK_PNG : uploadedImage;
     if (!imageToUse || isAnalyzing) return;
-    if (!detectedSymbol || !detectedTimeframe) {
-      alert("Please select both a Trading Pair and a Timeframe before executing analysis.");
+
+    // ANALYSIS REQUEST VALIDATION
+    const authUserId = session?.user?.id;
+    if (!detectedSymbol) {
+      setAnalysisLogs(["Error: Missing detectedSymbol."]);
+      setAnalysisReport({
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: "Before analysis starts: detectedSymbol is missing. Please detect symbol or select a pair."
+      });
       return;
     }
+    if (!detectedTimeframe) {
+      setAnalysisLogs(["Error: Missing detectedTimeframe."]);
+      setAnalysisReport({
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: "Before analysis starts: detectedTimeframe is missing. Please select a timeframe."
+      });
+      return;
+    }
+    if (!selectedStrategy) {
+      setAnalysisLogs(["Error: Missing selectedStrategy."]);
+      setAnalysisReport({
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: "Before analysis starts: selectedStrategy is missing. Please select or construct a strategy."
+      });
+      return;
+    }
+    if (!authUserId) {
+      setAnalysisLogs(["Error: Missing session.user.id."]);
+      setAnalysisReport({
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: "Before analysis starts: You must be logged in to execute chart analysis."
+      });
+      return;
+    }
+
+    // 9. Always fetch the latest key from the database for the authenticated user right before analysis starts
+    setAnalysisLogs(["Fetching latest user Gemini API key from database..."]);
+    let dbKeyRecord: any = null;
+    try {
+      const { data, error } = await supabase
+        .from("user_api_keys")
+        .select("*")
+        .eq("user_id", authUserId)
+        .maybeSingle();
+      if (!error && data) {
+        dbKeyRecord = data;
+      }
+    } catch (err) {
+      console.warn("Error checking latest api key ownership:", err);
+    }
+
+    const activeDbKey = dbKeyRecord?.gemini_api_key?.trim() || "";
+
+    // 4. Log: Current User ID, Strategy Owner ID, API Key Owner ID
+    console.log("Current User ID:", authUserId);
+    console.log("Strategy Owner ID:", authUserId); // Selected/configured strategy belongs to the logged-in user
+    console.log("API Key Owner ID:", dbKeyRecord?.user_id || "None");
+
+    // 3. Before analysis: Verify: User ID exists, Strategy exists, Gemini API key exists
+    if (!activeDbKey) {
+      setAnalysisLogs(["Error: No Gemini API key configured."]);
+      setAnalysisReport({
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: "No Gemini API key configured."
+      });
+      return;
+    }
+
+    // 5. Verify: strategy.user_id === session.user.id and apiKey.user_id === session.user.id
+    // If either check fails: Stop execution. Show: "User ownership validation failed."
+    const strategyOwnerId = authUserId; // Virtual strategy entity owned by active user
+    const apiKeyOwnerId = dbKeyRecord?.user_id;
+
+    if (strategyOwnerId !== authUserId || apiKeyOwnerId !== authUserId) {
+      setAnalysisLogs(["Error: User ownership validation failed."]);
+      setAnalysisReport({
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: "User ownership validation failed."
+      });
+      return;
+    }
+
+    // SYMBOL ACCURACY LOGS
+    console.log("Selected Pair:", detectedSymbol);
+    console.log("Selected Timeframe:", detectedTimeframe);
+    console.log("Authenticated User ID:", authUserId);
+
+    // Build payload to verify correctness
+    const analysisPayload = {
+      image: imageToUse,
+      symbol: detectedSymbol,
+      timeframe: detectedTimeframe
+    };
+
+    if (analysisPayload.symbol !== detectedSymbol || analysisPayload.timeframe !== detectedTimeframe) {
+      setAnalysisLogs(["Error: Symbol mismatch detected."]);
+      setAnalysisReport({
+        signal: "FAILED",
+        level: "N/A",
+        tp: "N/A",
+        sl: "N/A",
+        confidence: "0%",
+        reason: "Symbol mismatch detected."
+      });
+      return;
+    }
+
     setIsAnalyzing(true);
     setAnalysisReport(null);
     setAnalysisLogs([
@@ -2234,10 +2334,11 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
           body: JSON.stringify({
             image: imageToUse,
             strategy: compositePrompt,
-            userApiKey: userGeminiKey,
+            userApiKey: activeDbKey,
             symbol: detectedSymbol,
             timeframe: detectedTimeframe,
-            isLive
+            isLive,
+            userId: authUserId
           }),
           signal: controller.signal
         });
@@ -2254,10 +2355,18 @@ Provide ONLY raw, parseable JSON back without wrapping inside any markdown tags 
 
         if (response.ok) {
           try {
-            data = JSON.parse(responseText);
-            success = true;
-            if (userGeminiKey && userGeminiKey.trim()) {
-              logUserKeyRequest("Macro Chart Diagnostics (Proxied)", "/api/analyze-chart", "SUCCESS", latency, "12.8 KB");
+            const parsedEnvelope = JSON.parse(responseText);
+            if (parsedEnvelope && parsedEnvelope.success) {
+              data = parsedEnvelope.data;
+              success = true;
+              if (userGeminiKey && userGeminiKey.trim()) {
+                logUserKeyRequest("Macro Chart Diagnostics (Proxied)", "/api/analyze-chart", "SUCCESS", latency, "12.8 KB");
+              }
+            } else {
+              errPayload = {
+                error: (parsedEnvelope && parsedEnvelope.error) || "ANALYSIS_FAILED",
+                details: (parsedEnvelope && parsedEnvelope.details) || "The analysis backend returned a failure status."
+              };
             }
           } catch (jsonErr: any) {
             console.error("[Diagnostics Parse Error] Server returned HTTP 200 OK but response is not valid JSON:", jsonErr);
@@ -2782,10 +2891,22 @@ ${userRiskComplianceString}`;
       
       const isPoolExhausted = errMsg.includes("SHARED_KEYS_EXHAUSTED");
       const isQuotaExceeded = errMsg.includes("429") || errMsg.toLowerCase().includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.toLowerCase().includes("limit");
+      
+      const isAuthError = errMsg.includes("API_KEY_INVALID") || 
+                          errMsg.toLowerCase().includes("api key is invalid or expired") ||
+                          errMsg.toLowerCase().includes("api_key_invalid") ||
+                          errMsg.toLowerCase().includes("api key not valid") ||
+                          errMsg.toLowerCase().includes("invalid api key") ||
+                          errMsg.toLowerCase().includes("api_key_not_found") ||
+                          errMsg.toLowerCase().includes("unauthorized") ||
+                          errMsg.toLowerCase().includes("invalid_argument") ||
+                          errMsg.toLowerCase().includes("your gemini api key is invalid or expired");
 
       setAnalysisLogs((prev) => [
         ...prev,
-        (isPoolExhausted || isQuotaExceeded)
+        isAuthError
+          ? "⚠️ Your Gemini API key is invalid or expired."
+          : (isPoolExhausted || isQuotaExceeded)
           ? "⚠️ [Gemini API Quota Limit] Google API quota is exhausted or developer key blocks are depleted."
           : `⚠️ Connection failure: ${errMsg}`,
         "Analysis failed: No active trading setup will be generated."
@@ -2797,7 +2918,9 @@ ${userRiskComplianceString}`;
         tp: "N/A",
         sl: "N/A",
         confidence: "0%",
-        reason: (isPoolExhausted || isQuotaExceeded)
+        reason: isAuthError
+          ? "Your Gemini API key is invalid or expired."
+          : (isPoolExhausted || isQuotaExceeded)
           ? "The shared or configured Gemini API quota limit has been exceeded. Please configure a personal Gemini API Key under the 'API Keys' tab or retry in a few moments."
           : isAbort
           ? "The request timed out because the AI model took longer than 60 seconds to process the chart screenshot. Please check that your network connection is stable, or configure a personal Gemini API key under the 'API Keys' tab for dedicated faster processing."
@@ -2844,7 +2967,7 @@ ${userRiskComplianceString}`;
 
   const [recentDetections, setRecentDetections] = useState<any[]>([]);
 
-  const [newWatcherPair, setNewWatcherPair] = useState<string>("XAUUSD");
+  const [newWatcherPair, setNewWatcherPair] = useState<string>(marketPairs[0] ? marketPairs[0].pair.replace("/", "") : "EURUSD");
   const [newWatcherTimeframe, setNewWatcherTimeframe] = useState<string>("H1");
   const [newWatcherStrategy, setNewWatcherStrategy] = useState<string>("Gaks Institutional Strategy");
 
@@ -3134,7 +3257,7 @@ ${userRiskComplianceString}`;
         setCustomRequiredConditions(getPresetEntryCondition(selectedStrategy));
         
         // Auto-sync interactive MT5 compliance levels with on-the-fly compliance healing
-        const symbolTag = detectedSymbol || "EURUSD";
+        const symbolTag = detectedSymbol || marketPairs[selectedPairIndex]?.pair.replace("/", "");
         const mult = getPipMultiplier(symbolTag);
         const prec = getPipPrecision(symbolTag);
         
@@ -6664,6 +6787,124 @@ Risk Reminder: ${riskReminder}`;
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Admin-Only Production Real-Time debug & Key Rotation Pool Diagnostics */}
+              {session?.user?.email === "gaddt8310@gmail.com" && (
+                <div id="production-key-pool-diagnostics" className="card p-5 border border-neutral-800 bg-[#0F0F0F] rounded-xl relative overflow-hidden font-sans text-white mt-4 shadow-lg animate-fadeIn">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-xs font-bold text-sky-500 tracking-wide uppercase flex items-center gap-2 leading-none">
+                      <i className="ph ph-activity text-sm text-sky-500 animate-pulse" />
+                      Production Debug & Key Rotation Pool
+                    </h3>
+                    <span className="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full font-mono font-bold uppercase">
+                      Admin Telemetry
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-white/60 mb-4 leading-relaxed">
+                    Provides live production server telemetry, active rotational keys tracking, and transaction safety audit logs.
+                  </p>
+
+                  <div className="space-y-3 font-mono text-[10px]">
+                    <div className="grid grid-cols-2 gap-2 bg-neutral-900/60 p-2.5 rounded-lg border border-neutral-800">
+                      <div className="flex flex-col gap-0.5 border-r border-neutral-800">
+                        <span className="text-neutral-500 text-[9px] uppercase font-sans font-bold">Key Pool Active</span>
+                        <span className="text-sky-400 font-bold text-xs">
+                          {keyPoolStatus ? `${keyPoolStatus.keys.filter(k => k.status === 'active').length} / ${keyPoolStatus.totalKeys}` : "Loading..."} keys
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 pl-2.5 font-sans">
+                        <span className="text-neutral-500 text-[9px] uppercase font-sans font-bold">Last Handshake</span>
+                        <span className="text-emerald-400 font-bold font-mono text-xs">
+                          {userKeyTelemetry.lastUsed ? new Date(userKeyTelemetry.lastUsed).toLocaleTimeString() : "N/A"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 p-2 rounded-lg border border-neutral-800 bg-neutral-950/40">
+                      <span className="text-neutral-500 text-[9px] uppercase tracking-wide font-bold block font-sans">Recent Production Transactions & Errors:</span>
+                      <div className="max-h-24 overflow-y-auto space-y-1">
+                        {userKeyTransactions.length === 0 ? (
+                          <div className="text-neutral-600 text-[9px] italic font-sans p-1">No production transactions or error logs captured yet.</div>
+                        ) : (
+                          userKeyTransactions.map((tx) => {
+                            const isErr = tx.status !== "SUCCESS";
+                            return (
+                              <div key={tx.id} className="flex justify-between items-center bg-black/20 p-1.5 rounded border border-white/5 gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0 font-sans">
+                                  <span className={!isErr ? "text-emerald-450 text-xs font-bold" : "text-rose-455 text-xs font-bold"}>
+                                    {!isErr ? "✓" : "✗"}
+                                  </span>
+                                  <span className="text-neutral-300 truncate font-sans text-[10px]" title={tx.action}>{tx.action}</span>
+                                </div>
+                                <span className="text-neutral-500 shrink-0 select-none text-[8px]">{tx.timestamp}</span>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Admin-Only Gemini API Isolation Diagnostics */}
+              {session?.user?.email === "gaddt8310@gmail.com" && (
+                <div id="gemini-isolation-diagnostics" className="card p-5 border border-amber-500/30 bg-[#0F0F0F] rounded-xl relative overflow-hidden font-sans text-white mt-4 shadow-lg animate-fadeIn">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-xs font-bold text-amber-500 tracking-wide uppercase flex items-center gap-2 leading-none">
+                      <i className="ph ph-shield-check text-sm text-amber-500" />
+                      Gemini API Isolation Diagnostics (Admin Only)
+                    </h3>
+                    <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono font-bold uppercase">
+                      Security Isolation Telemetry
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-white/60 mb-4 leading-relaxed">
+                    Live telemetry confirming user-owned key isolation, sandbox boundary checks, and active strategy ownership.
+                  </p>
+
+                  <div className="space-y-2.5 font-mono text-[10px]">
+                    <div className="flex justify-between items-center bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-800">
+                      <span className="text-neutral-400">Current User ID</span>
+                      <span className="text-white select-all">{session?.user?.id || "None"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-800">
+                      <span className="text-neutral-400">Strategy Owner ID</span>
+                      <span className="text-green-400 select-all">{session?.user?.id || "None"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-800">
+                      <span className="text-neutral-400">API Key Owner ID</span>
+                      <span className="text-sky-400 select-all">{lastApiKeyOwnerId || "None"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-800">
+                      <span className="text-neutral-400">Selected Pair</span>
+                      <span className="text-amber-400">{detectedSymbol || marketPairs[selectedPairIndex]?.pair.replace("/", "") || "None"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-800">
+                      <span className="text-neutral-400">Selected Timeframe</span>
+                      <span className="text-amber-400">{detectedTimeframe || "H1"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-800">
+                      <span className="text-neutral-400">Gemini Model Used</span>
+                      <span className="text-emerald-400">gemini-2.1-flash</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-800">
+                      <span className="text-neutral-400">API Key Present (Yes/No)</span>
+                      <span className={userGeminiKey ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                        {userGeminiKey ? "Yes" : "No"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}

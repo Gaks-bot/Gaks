@@ -129,14 +129,47 @@ function startServer() {
 
   // Admin-Only Twelve Data Diagnostics Route
   app.post("/api/test-twelve-data", async (req, res) => {
+    const { symbol, timeframe, userId } = req.body;
     const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
     if (!twelveKey) {
       return res.status(400).json({ status: "error", errorType: "Invalid API Key", message: "TWELVE_DATA_API_KEY environment variable is not configured on the server." });
     }
 
+    const pairToUse = symbol || Object.keys(BASELINE_RATES)[0].replace("/", "");
+    const tfToUse = timeframe || "H1";
+
     try {
-      console.log("Fetching XAUUSD H1 from Twelve Data...");
-      const url = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=1`;
+      // REQUIREMENT 3: Before sending data to Twelve Data, log:
+      // Selected Pair:
+      // Selected Timeframe:
+      // Authenticated User ID:
+      console.log(`\nSelected Pair: ${pairToUse}\nSelected Timeframe: ${tfToUse}\nAuthenticated User ID: ${userId || "None"}\n`);
+
+      // Timeframe standardizer
+      let intervalFormatted = "1h";
+      const tfFormatted = tfToUse.toUpperCase();
+      if (tfFormatted === "M1") intervalFormatted = "1min";
+      else if (tfFormatted === "M5") intervalFormatted = "5min";
+      else if (tfFormatted === "M15") intervalFormatted = "15min";
+      else if (tfFormatted === "M30") intervalFormatted = "30min";
+      else if (tfFormatted === "H1" || tfFormatted === "H1 (1 HOUR)") intervalFormatted = "1h";
+      else if (tfFormatted === "H4") intervalFormatted = "4h";
+      else if (tfFormatted === "DAILY" || tfFormatted === "D" || tfFormatted === "D1") intervalFormatted = "1day";
+      else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1") intervalFormatted = "1week";
+      else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M") intervalFormatted = "1month";
+
+      let pairClean = pairToUse.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      let twelveSymbol = pairClean;
+      const isForex = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "EURGBP", "GBPJPY", "NZDUSD"].includes(pairClean);
+      const isMetal = ["XAUUSD", "XAGUSD"].includes(pairClean);
+      if (isForex) {
+        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
+      } else if (isMetal) {
+        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
+      }
+
+      console.log(`Fetching ${twelveSymbol} ${intervalFormatted} from Twelve Data...`);
+      const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(twelveSymbol)}&interval=${intervalFormatted}&apikey=${twelveKey}&outputsize=1`;
       const resp = await fetch(url);
       if (!resp.ok) {
         return res.status(resp.status).json({ status: "error", errorType: "Network Error", message: `HTTP Error: ${resp.statusText}` });
@@ -158,10 +191,18 @@ function startServer() {
         console.log("Response received successfully");
         const latest = rawData.values[0];
         console.log(`Latest close price: ${latest.close}`);
+
+        // REQUIREMENT 10: If selected pair ≠ fetched pair, stop execution and show "Symbol mismatch detected."
+        const fetchedSymbolClean = (rawData.meta?.symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+        if (fetchedSymbolClean !== pairClean) {
+          console.error(`Mismatch found: Selected = ${pairClean}, Fetched = ${fetchedSymbolClean}`);
+          return res.status(400).json({ status: "error", errorType: "API Error", message: "Symbol mismatch detected." });
+        }
+
         return res.json({
           status: "success",
-          symbol: rawData.meta?.symbol || "XAU/USD",
-          timeframe: rawData.meta?.interval || "1h",
+          symbol: rawData.meta?.symbol || twelveSymbol,
+          timeframe: rawData.meta?.interval || intervalFormatted,
           open: latest.open,
           high: latest.high,
           low: latest.low,
@@ -180,6 +221,10 @@ function startServer() {
   // Admin-Only End-to-End System Test Diagnostics Route
   app.post("/api/test-end-to-end", async (req, res) => {
     let currentStep = "Request received";
+    const { userApiKey, strategy, adminEmail, symbol, timeframe, userId } = req.body;
+    const pairToUse = symbol || Object.keys(BASELINE_RATES)[0].replace("/", "");
+    const tfToUse = timeframe || "H1";
+
     try {
       currentStep = "Request received";
       console.log("Step 1: Request received");
@@ -188,7 +233,6 @@ function startServer() {
       console.log("Step 2: Parsing request");
       const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
       const resendKey = process.env.Resend_key || process.env.RESEND_API_KEY || process.env.resend_key;
-      const { userApiKey, strategy, adminEmail } = req.body;
 
       if (!twelveKey) {
         throw new Error("TWELVE_DATA_API_KEY environment variable is not configured on the server.");
@@ -213,8 +257,38 @@ function startServer() {
 
       currentStep = "Calling Twelve Data";
       console.log("Step 4: Calling Twelve Data");
+
+      // REQUIREMENT 3: Before sending data to Twelve Data, log:
+      // Selected Pair:
+      // Selected Timeframe:
+      // Authenticated User ID:
+      console.log(`\nSelected Pair: ${pairToUse}\nSelected Timeframe: ${tfToUse}\nAuthenticated User ID: ${userId || "None"}\n`);
+
+      // Format Twelve Data interval
+      let intervalFormatted = "1h";
+      const tfFormatted = tfToUse.toUpperCase();
+      if (tfFormatted === "M1") intervalFormatted = "1min";
+      else if (tfFormatted === "M5") intervalFormatted = "5min";
+      else if (tfFormatted === "M15") intervalFormatted = "15min";
+      else if (tfFormatted === "M30") intervalFormatted = "30min";
+      else if (tfFormatted === "H1" || tfFormatted === "H1 (1 HOUR)") intervalFormatted = "1h";
+      else if (tfFormatted === "H4") intervalFormatted = "4h";
+      else if (tfFormatted === "DAILY" || tfFormatted === "D" || tfFormatted === "D1") intervalFormatted = "1day";
+      else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1") intervalFormatted = "1week";
+      else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M") intervalFormatted = "1month";
+
+      let pairClean = pairToUse.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      let twelveSymbol = pairClean;
+      const isForex = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "EURGBP", "GBPJPY", "NZDUSD"].includes(pairClean);
+      const isMetal = ["XAUUSD", "XAGUSD"].includes(pairClean);
+      if (isForex) {
+        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
+      } else if (isMetal) {
+        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
+      }
+
       let candles = [];
-      const twelveUrl = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=20`;
+      const twelveUrl = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(twelveSymbol)}&interval=${intervalFormatted}&apikey=${twelveKey}&outputsize=20`;
       const twelveResp = await fetch(twelveUrl);
       if (!twelveResp.ok) {
         const rawText = await twelveResp.text();
@@ -231,18 +305,34 @@ function startServer() {
         throw new Error("Twelve Data returned an empty candles array.");
       }
 
+      // REQUIREMENT 10: If selected pair ≠ fetched pair, stop execution and show "Symbol mismatch detected."
+      const fetchedSymbolClean = (rawData.meta?.symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (fetchedSymbolClean !== pairClean) {
+        console.error(`Mismatch found: Selected = ${pairClean}, Fetched = ${fetchedSymbolClean}`);
+        return res.status(400).json({
+          success: false,
+          step: "Calling Twelve Data",
+          error: "Symbol mismatch detected."
+        });
+      }
+
       currentStep = "Calling Gemini";
       console.log("Step 5: Calling Gemini");
       const formattedCandles = candles.map((c: any) => 
         `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`
       ).join("\n");
 
+      // REQUIREMENT 4: Before sending data to Gemini, log:
+      // Pair sent to Gemini:
+      // Timeframe sent to Gemini:
+      console.log(`\nPair sent to Gemini: ${pairToUse}\nTimeframe sent to Gemini: ${tfToUse}\n`);
+
       let setup = "NO_TRADE_SETUP";
       let confidence = 70;
       let explanation = "";
 
       const prompt = `You are an institutional smart money analyst.
-Analyze the following XAU/USD H1 market data (20 candles, latest to oldest):
+Analyze the following ${twelveSymbol} ${tfToUse} market data (20 candles, latest to oldest):
 ${formattedCandles}
 
 Using the active strategy rules:
@@ -319,11 +409,11 @@ You MUST response with a JSON object. The response format must be strictly valid
               <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                 <tr>
                   <td style="padding: 6px 0; color: #737373; font-weight: bold; width: 140px;">Pair:</td>
-                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">XAUUSD</td>
+                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">${twelveSymbol}</td>
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #737373; font-weight: bold;">Timeframe:</td>
-                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">H1</td>
+                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">${tfToUse}</td>
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #737373; font-weight: bold;">Strategy Name:</td>
@@ -379,8 +469,8 @@ You MUST response with a JSON object. The response format must be strictly valid
       return res.status(200).json({
         success: true,
         data: {
-          pair: "XAUUSD",
-          timeframe: "H1",
+          pair: pairClean,
+          timeframe: tfToUse,
           strategy: firstLineOfStrategy,
           result: setup,
           confidence: confidence,
@@ -403,7 +493,9 @@ You MUST response with a JSON object. The response format must be strictly valid
 
   // Admin-Only Test Gemini Analysis Diagnostics Route
   app.post("/api/test-gemini-analysis", async (req, res) => {
-    const { userApiKey } = req.body;
+    const { userApiKey, symbol, timeframe, userId } = req.body;
+    const pairToUse = symbol || Object.keys(BASELINE_RATES)[0].replace("/", "");
+    const tfToUse = timeframe || "H1";
 
     const isUserMock = checkIfMockKey(userApiKey);
     const isPoolMock = !userApiKey && readAdminKeys().every(k => checkIfMockKey(k.key));
@@ -413,8 +505,8 @@ You MUST response with a JSON object. The response format must be strictly valid
       await new Promise(resolve => setTimeout(resolve, 800));
       return res.json({
         status: "success",
-        symbol: "XAUUSD",
-        timeframe: "H1",
+        symbol: pairToUse,
+        timeframe: tfToUse,
         geminiResult: "BUY_SETUP",
         isSimulated: true,
         message: "Completed Sandbox Simulation Analysis successfully."
@@ -428,8 +520,37 @@ You MUST response with a JSON object. The response format must be strictly valid
     }
 
     try {
-      console.log("Fetching market data...");
-      const url = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&apikey=${twelveKey}&outputsize=20`;
+      // REQUIREMENT 3: Before sending data to Twelve Data, log:
+      // Selected Pair:
+      // Selected Timeframe:
+      // Authenticated User ID:
+      console.log(`\nSelected Pair: ${pairToUse}\nSelected Timeframe: ${tfToUse}\nAuthenticated User ID: ${userId || "None"}\n`);
+
+      // Timeframe standardizer
+      let intervalFormatted = "1h";
+      const tfFormatted = tfToUse.toUpperCase();
+      if (tfFormatted === "M1") intervalFormatted = "1min";
+      else if (tfFormatted === "M5") intervalFormatted = "5min";
+      else if (tfFormatted === "M15") intervalFormatted = "15min";
+      else if (tfFormatted === "M30") intervalFormatted = "30min";
+      else if (tfFormatted === "H1" || tfFormatted === "H1 (1 HOUR)") intervalFormatted = "1h";
+      else if (tfFormatted === "H4") intervalFormatted = "4h";
+      else if (tfFormatted === "DAILY" || tfFormatted === "D" || tfFormatted === "D1") intervalFormatted = "1day";
+      else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1") intervalFormatted = "1week";
+      else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M") intervalFormatted = "1month";
+
+      let pairClean = pairToUse.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      let twelveSymbol = pairClean;
+      const isForex = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "EURGBP", "GBPJPY", "NZDUSD"].includes(pairClean);
+      const isMetal = ["XAUUSD", "XAGUSD"].includes(pairClean);
+      if (isForex) {
+        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
+      } else if (isMetal) {
+        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
+      }
+
+      console.log(`Fetching market data for ${twelveSymbol} ${intervalFormatted}...`);
+      const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(twelveSymbol)}&interval=${intervalFormatted}&apikey=${twelveKey}&outputsize=20`;
       const resp = await fetch(url);
       if (!resp.ok) {
         return res.status(resp.status).json({ status: "error", errorType: "Network Error", message: `Twelve Data HTTP Error: ${resp.statusText}` });
@@ -452,14 +573,25 @@ You MUST response with a JSON object. The response format must be strictly valid
         return res.status(400).json({ status: "error", errorType: "API Error", message: "Empty candles from Twelve Data API." });
       }
 
+      // REQUIREMENT 10: If selected pair ≠ fetched pair, stop execution and show "Symbol mismatch detected."
+      const fetchedSymbolClean = (rawData.meta?.symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (fetchedSymbolClean !== pairClean) {
+        console.error(`Mismatch found: Selected = ${pairClean}, Fetched = ${fetchedSymbolClean}`);
+        return res.status(400).json({ status: "error", errorType: "API Error", message: "Symbol mismatch detected." });
+      }
+
       // Format candles for prompt
       const formattedCandles = candles.map((c: any) => 
         `Time: ${c.datetime}, O: ${c.open}, H: ${c.high}, L: ${c.low}, C: ${c.close}`
       ).join("\n");
 
-      console.log("Sending data to Gemini...");
+      // REQUIREMENT 4: Before sending data to Gemini, log:
+      // Pair sent to Gemini:
+      // Timeframe sent to Gemini:
+      console.log(`\nPair sent to Gemini: ${pairToUse}\nTimeframe sent to Gemini: ${tfToUse}\n`);
+
       const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
-        const prompt = `You are an expert financial market analyst. Analyze the following 20 recent H1 candlesticks for symbol XAU/USD (from latest to oldest):
+        const prompt = `You are an expert financial market analyst. Analyze the following 20 recent ${tfToUse} candlesticks for symbol ${twelveSymbol} (from latest to oldest):
 
 ${formattedCandles}
 
@@ -489,8 +621,8 @@ NO_TRADE_SETUP`;
       if (sanitizedResult === "BUY_SETUP" || sanitizedResult === "SELL_SETUP" || sanitizedResult === "NO_TRADE_SETUP") {
         return res.json({
           status: "success",
-          symbol: "XAUUSD",
-          timeframe: "H1",
+          symbol: pairClean,
+          timeframe: tfToUse,
           geminiResult: sanitizedResult
         });
       } else {
@@ -502,8 +634,8 @@ NO_TRADE_SETUP`;
 
         return res.json({
           status: "success",
-          symbol: "XAUUSD",
-          timeframe: "H1",
+          symbol: pairClean,
+          timeframe: tfToUse,
           geminiResult: sanitizedResult
         });
       }
@@ -694,7 +826,7 @@ NO_TRADE_SETUP`;
   });
 
   function generateHeuristicsAnalysis(symbol: string, strategy?: string, imageBase64?: string) {
-    const cleanSymbol = (symbol || "EURUSD").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const cleanSymbol = (symbol || Object.keys(BASELINE_RATES)[0].replace("/", "")).replace(/[^A-Za-z0-9]/g, "").toUpperCase();
     const seedStr = imageBase64 ? imageBase64.substring(50, Math.min(250, imageBase64.length)) : cleanSymbol;
     const rand = createSeededRandom(seedStr);
     
@@ -1936,7 +2068,7 @@ Return your findings in the requested JSON structure.`
 
   // Secure Server-side Gemini AI analysis route using @google/genai with Key Rotation
   app.post("/api/analyze-chart", async (req, res) => {
-    const { image, strategy, userApiKey, symbol, timeframe, isLive, riskSettings } = req.body;
+    const { image, strategy, userApiKey, symbol, timeframe, isLive, riskSettings, userId } = req.body;
 
     if (!image) {
       return res.status(400).json({ error: "Missing image payload." });
@@ -1962,12 +2094,15 @@ Return your findings in the requested JSON structure.`
     const imageHash = crypto.createHash("sha256").update(base64Data).digest("hex");
     const cacheKey = `${isLive ? "live" : imageHash}_${strategy || ""}_${symbol || ""}_${timeframe || ""}`;
 
-    if (analysisCache.has(cacheKey)) {
-      console.log(`[Analysis Cache] High-fidelity match found for ${symbol || "unknown asset"} with identical strategy. Returning exact cached report.`);
-      return res.json(analysisCache.get(cacheKey));
-    }
+    // REQUIREMENT 7: Removed cache check so that it never reuses a previous analysis result.
 
     try {
+      // REQUIREMENT 3: Before sending data to Twelve Data or server-side intelligence, log selection:
+      console.log(`\nSelected Pair: ${symbol}\nSelected Timeframe: ${timeframe}\nAuthenticated User ID: ${userId || "None"}\n`);
+
+      // REQUIREMENT 4: Before sending data to Gemini, log parameters sent to Gemini:
+      console.log(`\nPair sent to Gemini: ${symbol}\nTimeframe sent to Gemini: ${timeframe}\n`);
+
       const userRiskComplianceString = riskSettings ? `
 STRICT USER RISK SETTINGS COMPLIANCE (MANDATORY):
 - Current Account Capital Size: $${riskSettings.accountSize}
@@ -2356,9 +2491,29 @@ ${userRiskComplianceString}`;
           }
         });
 
-        const parsedResult = JSON.parse(response.text || "{}");
+        const responseText = response.text || "{}";
+        let parsedResult;
+        try {
+          parsedResult = JSON.parse(responseText);
+        } catch (error) {
+          console.error("Invalid JSON response:", responseText);
+          return {
+            success: false,
+            error: "Invalid AI response format",
+            rawResponse: responseText
+          };
+        }
         return parsedResult;
       });
+
+      if (rotationCall.result && rotationCall.result.success === false) {
+        return res.json({
+          success: false,
+          error: rotationCall.result.error || "Invalid AI response format",
+          details: "Gemini server endpoint failed to output standard structured JSON.",
+          rawResponse: rotationCall.result.rawResponse
+        });
+      }
 
       const responsePayload = {
         ...rotationCall.result,
@@ -2368,13 +2523,28 @@ ${userRiskComplianceString}`;
       // Store in global in-memory MAP cache for deterministic duplicate detection
       analysisCache.set(cacheKey, responsePayload);
 
-      return res.json(responsePayload);
+      return res.json({
+        success: true,
+        data: responsePayload
+      });
 
     } catch (error: any) {
-      console.log("[Setup Analysis] Downgrading to sandbox high-fidelity heuristic generator. Root issue: API coverage limits hit.");
-      const fallbackReport = generateHeuristicsAnalysis(symbol || "EURUSD", strategy, base64Data);
-      analysisCache.set(cacheKey, fallbackReport);
-      return res.json(fallbackReport);
+      console.error("[Setup Analysis Fatal Error]", error);
+      console.log("[Setup Analysis] Downgrading to sandbox high-fidelity heuristic generator. Root issue: API coverage limits hit or execution problem.");
+      try {
+        const fallbackReport = generateHeuristicsAnalysis(symbol || Object.keys(BASELINE_RATES)[0].replace("/", ""), strategy, base64Data);
+        analysisCache.set(cacheKey, fallbackReport);
+        return res.json({
+          success: true,
+          data: fallbackReport
+        });
+      } catch (fallbackErr: any) {
+        return res.status(500).json({
+          success: false,
+          error: "Heuristic fallback failed",
+          details: fallbackErr.message || String(fallbackErr)
+        });
+      }
     }
   });
 
