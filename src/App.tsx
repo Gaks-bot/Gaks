@@ -839,20 +839,7 @@ export default function App() {
 
   // States for Twelve Data Admin-Only Diagnostics
   const [isTestingTwelveData, setIsTestingTwelveData] = useState<boolean>(false);
-  const [twelveDataTestResult, setTwelveDataTestResult] = useState<{
-    status: "success" | "error";
-    data?: {
-      symbol: string;
-      timeframe: string;
-      open: string;
-      high: string;
-      low: string;
-      close: string;
-      timestamp: string;
-    };
-    errorType?: "Invalid API Key" | "Rate Limit Reached" | "Network Error" | "API Error";
-    message?: string;
-  } | null>(null);
+  const [twelveDataTestResult, setTwelveDataTestResult] = useState<any | null>(null);
 
   // States for Gemini Analysis Admin-Only Diagnostics
   const [isTestingGeminiAnalysis, setIsTestingGeminiAnalysis] = useState<boolean>(false);
@@ -1445,93 +1432,117 @@ export default function App() {
   }, [session, currentPage, isSettingsOpen]);
 
   const handleTestTwelveData = async () => {
-    const activeSym = detectedSymbol || marketPairs[selectedPairIndex]?.pair.replace("/", "");
-    const activeTf = detectedTimeframe || "H1";
-    console.log(`Fetching ${activeSym} ${activeTf} from Twelve Data...`);
+    const activeSym = "EUR/USD";
+    const activeTf = "1h";
+    const endpoint = "/api/test-twelve-data";
+    const requestPayloadObj = {
+      symbol: activeSym,
+      timeframe: activeTf,
+      userId: session?.user?.id
+    };
+    const reqPayloadStr = JSON.stringify(requestPayloadObj, null, 2);
+
+    console.log("%c--- TWELVE DATA API TEST INITIATED ---", "color: #EF4444; font-weight: bold;");
+    console.log("1. Function Name: handleTestTwelveData");
+    console.log("2. API Endpoint Called: " + endpoint);
+    console.log("3. Request Payload:", requestPayloadObj);
+    console.log("4. API Key Present (Yes/No) - Check starting...");
+
     setIsTestingTwelveData(true);
     setTwelveDataTestResult(null);
 
     try {
-      const resp = await fetch("/api/test-twelve-data", {
+      const resp = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          symbol: activeSym,
-          timeframe: activeTf,
-          userId: session?.user?.id
-        })
+        body: JSON.stringify(requestPayloadObj)
       });
       
+      console.log(`5. HTTP Status: ${resp.status}`);
+
       let rawText = "";
       try {
         rawText = await resp.text();
       } catch (readErr: any) {
         console.error("[Twelve Data Test] Failed to read response stream:", readErr);
-        throw new Error(`Failed to read response body: ${readErr.message}`);
+        rawText = `Failed to read response stream: ${readErr.message}`;
+      }
+      console.log(`6. Raw Response Text:\n${rawText}`);
+
+      // REQUIREMENT 8: Replace unsafe parsing
+      let parsedData: any = null;
+      try {
+        parsedData = JSON.parse(rawText);
+      } catch (jsonErr: any) {
+        console.error("Invalid response (failed JSON parse):", rawText);
       }
 
-      let data: any = null;
-      if (resp.ok) {
-        try {
-          data = JSON.parse(rawText);
-        } catch (jsonErr: any) {
-          console.error("[Twelve Data Test] HTTP 200 but failed to parse JSON:", jsonErr);
-          console.error("[Twelve Data Test raw response]:", rawText);
-          const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
-          const errorMsg = isHtml ? "The backend returned an HTML page. The server / Twelve Data scraper may have crashed." : rawText;
-          throw new Error(`Invalid JSON response: ${errorMsg.slice(0, 300)}`);
-        }
+      const apiKeyPresent = parsedData?.apiKeyPresent || (resp.status === 400 && rawText.includes("No Twelve Data API Key Found") ? "No" : "Yes");
+      console.log(`7. API Key Present: ${apiKeyPresent}`);
 
-        if (data && data.status === "success") {
-          console.log("Response received successfully");
-          console.log(`Latest close price: ${data.close}`);
-          setTwelveDataTestResult({
-            status: "success",
-            data: {
-              symbol: data.symbol,
-              timeframe: data.timeframe,
-              open: data.open,
-              high: data.high,
-              low: data.low,
-              close: data.close,
-              timestamp: data.timestamp
-            }
-          });
-        } else {
-          const errType = data?.errorType || "API Error";
-          setTwelveDataTestResult({
-            status: "error",
-            errorType: errType as any,
-            message: data?.message || "Failed to fetch Twelve Data"
-          });
-        }
+      if (resp.ok && parsedData && parsedData.status === "success") {
+        console.log("✅ Twelve Data API Key Valid");
+        console.log(`- Symbol tested: ${parsedData.symbol}`);
+        console.log(`- Interval tested: ${parsedData.timeframe}`);
+        console.log(`- Latest candle timestamp: ${parsedData.timestamp}`);
+        console.log("- Success status: Valid");
+
+        setTwelveDataTestResult({
+          status: "success",
+          functionName: "handleTestTwelveData",
+          apiEndpoint: endpoint,
+          requestPayload: reqPayloadStr,
+          responsePayload: JSON.stringify(parsedData, null, 2),
+          apiKeyPresent: apiKeyPresent,
+          httpStatus: resp.status,
+          rawResponseText: rawText,
+          calledUrl: parsedData.calledUrl,
+          symbolTested: parsedData.symbol,
+          intervalTested: parsedData.timeframe,
+          latestTimestamp: parsedData.timestamp,
+          successStatusColor: "text-emerald-400 font-bold",
+          data: {
+            symbol: parsedData.symbol,
+            timeframe: parsedData.timeframe,
+            open: parsedData.open,
+            high: parsedData.high,
+            low: parsedData.low,
+            close: parsedData.close,
+            timestamp: parsedData.timestamp
+          }
+        });
       } else {
-        console.error(`[Twelve Data Test] Server returned HTTP error status ${resp.status}`);
-        console.error("[Twelve Data Test error response text]:", rawText);
-        const isHtml = rawText.toLowerCase().includes("<html") || rawText.toLowerCase().includes("<!doctype html");
-        const errorMsg = isHtml ? `The server returned an HTML error page (Status ${resp.status}).` : rawText;
-        
-        try {
-          const parsedErr = JSON.parse(rawText);
-          setTwelveDataTestResult({
-            status: "error",
-            errorType: (parsedErr.errorType || "Network Error") as any,
-            message: parsedErr.message || `HTTP ${resp.status}`
-          });
-        } catch (_) {
-          setTwelveDataTestResult({
-            status: "error",
-            errorType: "Network Error",
-            message: errorMsg || `HTTP ${resp.status}: Failed to retrieve data.`
-          });
-        }
+        const errMessage = parsedData?.message || `HTTP ${resp.status}: Failed validation.`;
+        console.log(`❌ Twelve Data Test Failed: ${errMessage}`);
+
+        setTwelveDataTestResult({
+          status: "error",
+          functionName: "handleTestTwelveData",
+          apiEndpoint: endpoint,
+          requestPayload: reqPayloadStr,
+          responsePayload: parsedData ? JSON.stringify(parsedData, null, 2) : "Failed to parse JSON response payload.",
+          apiKeyPresent: apiKeyPresent,
+          httpStatus: resp.status,
+          rawResponseText: rawText,
+          calledUrl: parsedData?.calledUrl || "https://api.twelvedata.com/time_series?symbol=EUR/USD&interval=1h&apikey=***",
+          errorType: parsedData?.errorType || "API Error",
+          message: errMessage
+        });
       }
     } catch (err: any) {
       console.error("Fetch exception during Twelve Data test:", err);
       setTwelveDataTestResult({
         status: "error",
+        functionName: "handleTestTwelveData",
+        apiEndpoint: endpoint,
+        requestPayload: reqPayloadStr,
+        responsePayload: "Connection Exception: " + err.message,
+        apiKeyPresent: "No",
+        httpStatus: 500,
+        rawResponseText: String(err),
+        calledUrl: "https://api.twelvedata.com/time_series?symbol=EUR/USD&interval=1h&apikey=***",
         errorType: "Network Error",
         message: err.message || "Network request failed"
       });
@@ -6439,67 +6450,138 @@ Risk Reminder: ${riskReminder}`;
                       {isTestingTwelveData ? (
                         <>
                           <i className="ph ph-circle-notch animate-spin text-white" />
-                          <span>Fetching XAUUSD H1 from Twelve Data...</span>
+                          <span>Testing Twelve Data (EUR/USD, 1h)...</span>
                         </>
                       ) : (
                         <>
                           <i className="ph ph-database text-sm" />
-                          <span>Test Twelve Data</span>
+                          <span>Test Twelve Data API Key</span>
                         </>
                       )}
                     </button>
 
                     {/* Results or Errors */}
                     {twelveDataTestResult && (
-                      <div className="space-y-2 animate-fadeIn">
-                        {twelveDataTestResult.status === "success" && twelveDataTestResult.data ? (
-                          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2.5">
-                            <div className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
-                              <i className="ph ph-check-circle text-sm text-emerald-500" />
-                              ✓ Twelve Data Connected Successfully
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-white/80 bg-black/30 p-2.5 rounded-md border border-white/5">
-                              <div className="flex justify-between border-b border-white/5 pb-1 col-span-2">
-                                <span className="text-white/40 text-[9px]">Symbol</span>
-                                <span className="font-bold text-white">{twelveDataTestResult.data.symbol}</span>
-                              </div>
-                              <div className="flex justify-between border-b border-white/5 pb-1 col-span-2">
-                                <span className="text-white/40 text-[9px]">Timeframe</span>
-                                <span className="font-bold text-white">{twelveDataTestResult.data.timeframe}</span>
-                              </div>
-                              <div className="flex justify-between border-b border-white/5 pb-1 col-span-2">
-                                <span className="text-white/40 text-[9px]">Open</span>
-                                <span className="font-medium text-white">{twelveDataTestResult.data.open}</span>
-                              </div>
-                              <div className="flex justify-between border-b border-white/5 pb-1 col-span-2">
-                                <span className="text-white/40 text-[9px]">High</span>
-                                <span className="font-medium text-white">{twelveDataTestResult.data.high}</span>
-                              </div>
-                              <div className="flex justify-between border-b border-white/5 pb-1 col-span-2">
-                                <span className="text-white/40 text-[9px]">Low</span>
-                                <span className="font-medium text-white">{twelveDataTestResult.data.low}</span>
-                              </div>
-                              <div className="flex justify-between border-b border-white/5 pb-1 col-span-2">
-                                <span className="text-white/40 text-[9px]">Close</span>
-                                <span className="font-bold text-white">{twelveDataTestResult.data.close}</span>
-                              </div>
-                              <div className="flex justify-between col-span-2 pb-0.5">
-                                <span className="text-white/40 text-[9px]">Timestamp</span>
-                                <span className="font-medium text-white/50">{twelveDataTestResult.data.timestamp}</span>
-                              </div>
-                            </div>
+                      <div className="space-y-3 mt-3 animate-fadeIn">
+                        {/* Status valid/invalid or missing */}
+                        {twelveDataTestResult.status === "success" ? (
+                          <div className="p-3.5 bg-emerald-950/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-bold flex items-center gap-2">
+                            <span className="text-sm">✅</span>
+                            <span>Twelve Data API Key Valid</span>
+                          </div>
+                        ) : twelveDataTestResult.message?.includes("No Twelve Data API Key Found") ? (
+                          <div className="p-3.5 bg-rose-950/20 border border-rose-500/30 rounded-lg text-rose-400 text-xs font-bold flex items-center gap-2">
+                            <span className="text-sm">❌</span>
+                            <span>No Twelve Data API Key Found</span>
                           </div>
                         ) : (
-                          <div className="p-3 bg-[#110505] border border-red-950 text-red-400 rounded-lg text-xs font-semibold flex flex-col gap-1">
-                            <div className="flex items-center gap-1.5 font-bold">
-                              <i className="ph ph-warning text-sm text-red-500" />
-                              <span>{twelveDataTestResult.errorType}</span>
+                          <div className="p-3.5 bg-red-950/20 border border-red-500/30 rounded-lg text-red-400 text-xs font-bold flex flex-col gap-1">
+                            <div className="flex items-center gap-2 text-rose-400 font-bold">
+                              <span className="text-sm">❌</span>
+                              <span>Twelve Data Test Failed ({twelveDataTestResult.errorType})</span>
                             </div>
-                            <span className="text-[10px] font-mono text-white/50 font-normal leading-normal mt-0.5">
+                            <p className="text-[10px] text-white/70 font-mono mt-0.5 font-normal leading-normal select-all">
                               {twelveDataTestResult.message}
-                            </span>
+                            </p>
                           </div>
                         )}
+
+                        {/* Telemetry diagnostics display */}
+                        <div className="p-4 bg-[#0A0A0A] border border-neutral-800 rounded-lg space-y-3 font-mono text-[10px]">
+                          <div className="text-white/40 text-[9px] uppercase tracking-wider font-sans font-bold border-b border-neutral-800 pb-1.5 flex items-center gap-1.5">
+                            <i className="ph ph-cpu text-xs text-red-500" />
+                            Live Telemetry Verification Map
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 bg-neutral-900/60 p-3 rounded-lg border border-neutral-850">
+                            <div className="flex justify-between items-center pb-1 border-b border-neutral-850 md:col-span-1">
+                              <span className="text-white/40">Function Name:</span>
+                              <span className="text-amber-400 select-all font-bold">{twelveDataTestResult.functionName || "handleTestTwelveData"}</span>
+                            </div>
+                            <div className="flex justify-between items-center pb-1 border-b border-neutral-850 md:col-span-1">
+                              <span className="text-white/40">API Endpoint:</span>
+                              <span className="text-amber-400 select-all font-bold">{twelveDataTestResult.apiEndpoint || "/api/test-twelve-data"}</span>
+                            </div>
+                            <div className="flex justify-between items-center pb-1 border-b border-neutral-850 md:col-span-2">
+                              <span className="text-white/40">API Key Present check:</span>
+                              <span className={twelveDataTestResult.apiKeyPresent === "Yes" ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                                {twelveDataTestResult.apiKeyPresent || "No"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center pb-1 border-b border-neutral-850 md:col-span-1">
+                              <span className="text-white/40">HTTP Status:</span>
+                              <span className={twelveDataTestResult.httpStatus === 200 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                                {twelveDataTestResult.httpStatus || 400}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center pb-1 border-b border-neutral-850 md:col-span-1">
+                              <span className="text-white/40">Response Format:</span>
+                              <span className="text-sky-400 font-bold">application/json</span>
+                            </div>
+                            <div className="flex justify-between items-start pb-1 border-b border-neutral-850 md:col-span-2 flex-col gap-1">
+                              <span className="text-white/40">Logged Request URL:</span>
+                              <span className="text-white/70 select-all text-[9px] break-all leading-normal bg-black/40 p-1.5 rounded w-full border border-white/5 font-mono">{twelveDataTestResult.calledUrl || "https://api.twelvedata.com/time_series?symbol=EUR/USD&interval=1h&apikey=***"}</span>
+                            </div>
+                          </div>
+
+                          {/* Success Specific metrics */}
+                          {twelveDataTestResult.status === "success" && (
+                            <div className="grid grid-cols-2 gap-2 bg-neutral-900/60 p-3 rounded-lg border border-neutral-850">
+                              <div className="text-white/40 text-[9px] uppercase font-sans font-bold col-span-2 mb-1 border-b border-neutral-800 pb-1 flex items-center gap-1.5">
+                                <i className="ph ph-check-square text-xs text-emerald-400" />
+                                Fetched Candle Properties (Valid Match)
+                              </div>
+                              <div className="flex justify-between pb-1 col-span-2 border-b border-neutral-850">
+                                <span className="text-white/40">Symbol Tested:</span>
+                                <span className="font-bold text-white">EUR/USD</span>
+                              </div>
+                              <div className="flex justify-between pb-1 col-span-2 border-b border-neutral-850">
+                                <span className="text-white/40">Interval Tested:</span>
+                                <span className="font-bold text-white">1h</span>
+                              </div>
+                              <div className="flex justify-between pb-1 col-span-2 border-b border-neutral-850">
+                                <span className="text-white/40">Latest Candle Timestamp:</span>
+                                <span className="font-bold text-white">{twelveDataTestResult.latestTimestamp || "N/A"}</span>
+                              </div>
+                              {twelveDataTestResult.data && (
+                                <>
+                                  <div className="flex justify-between pb-1 border-b border-neutral-850 col-span-1 pr-1">
+                                    <span className="text-white/40">Open:</span>
+                                    <span className="font-medium text-white">{twelveDataTestResult.data.open}</span>
+                                  </div>
+                                  <div className="flex justify-between pb-1 border-b border-neutral-850 col-span-1 pl-1">
+                                    <span className="text-white/40">Close:</span>
+                                    <span className="font-bold text-white">{twelveDataTestResult.data.close}</span>
+                                  </div>
+                                  <div className="flex justify-between pb-1 col-span-1 pr-1">
+                                    <span className="text-white/40">High:</span>
+                                    <span className="font-medium text-white">{twelveDataTestResult.data.high}</span>
+                                  </div>
+                                  <div className="flex justify-between pb-1 col-span-1 pl-1">
+                                    <span className="text-white/40">Low:</span>
+                                    <span className="font-medium text-white">{twelveDataTestResult.data.low}</span>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Request Payload block */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-white/40 font-sans font-bold uppercase text-[9px]">Request Payload:</span>
+                            <pre className="p-2 bg-black/40 text-neutral-300 rounded border border-white/5 text-[9px] overflow-x-auto whitespace-pre">
+                              {twelveDataTestResult.requestPayload}
+                            </pre>
+                          </div>
+
+                          {/* Raw Response Payload block */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-white/40 font-sans font-bold uppercase text-[9px]">Raw Response String (Diagnostics):</span>
+                            <pre className="p-2 bg-black/40 text-rose-300 font-mono text-[9px] rounded border border-white/5 max-h-48 overflow-y-auto whitespace-pre-wrap select-all leading-normal">
+                              {twelveDataTestResult.rawResponseText || twelveDataTestResult.responsePayload || "Empty response"}
+                            </pre>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

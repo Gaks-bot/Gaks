@@ -130,91 +130,166 @@ function startServer() {
   // Admin-Only Twelve Data Diagnostics Route
   app.post("/api/test-twelve-data", async (req, res) => {
     const { symbol, timeframe, userId } = req.body;
-    const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
+    const twelveKey = (process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY || "").trim();
+    const apiKeyPresentStr = twelveKey ? "Yes" : "No";
+
+    console.log(`[Twelve Data Test Backend] Before request: API Key Present = ${apiKeyPresentStr}`);
+    console.log(`[Twelve Data Test Backend] Received test request for Symbol: ${symbol}, Timeframe: ${timeframe}, User ID: ${userId}`);
+
     if (!twelveKey) {
-      return res.status(400).json({ status: "error", errorType: "Invalid API Key", message: "TWELVE_DATA_API_KEY environment variable is not configured on the server." });
+      console.log("[Twelve Data Test Backend] No Twelve Data API Key Found.");
+      return res.status(400).json({ 
+        status: "error", 
+        errorType: "Invalid API Key", 
+        message: "❌ No Twelve Data API Key Found",
+        apiKeyPresent: "No",
+        httpStatus: 400,
+        rawResponse: '{"error": "No Twelve Data API Key Found"}'
+      });
     }
 
-    const pairToUse = symbol || Object.keys(BASELINE_RATES)[0].replace("/", "");
-    const tfToUse = timeframe || "H1";
+    const pairToUse = symbol || "EUR/USD";
+    const tfToUse = timeframe || "1h";
 
     try {
-      // REQUIREMENT 3: Before sending data to Twelve Data, log:
-      // Selected Pair:
-      // Selected Timeframe:
-      // Authenticated User ID:
-      console.log(`\nSelected Pair: ${pairToUse}\nSelected Timeframe: ${tfToUse}\nAuthenticated User ID: ${userId || "None"}\n`);
-
       // Timeframe standardizer
       let intervalFormatted = "1h";
       const tfFormatted = tfToUse.toUpperCase();
-      if (tfFormatted === "M1") intervalFormatted = "1min";
-      else if (tfFormatted === "M5") intervalFormatted = "5min";
-      else if (tfFormatted === "M15") intervalFormatted = "15min";
-      else if (tfFormatted === "M30") intervalFormatted = "30min";
-      else if (tfFormatted === "H1" || tfFormatted === "H1 (1 HOUR)") intervalFormatted = "1h";
-      else if (tfFormatted === "H4") intervalFormatted = "4h";
-      else if (tfFormatted === "DAILY" || tfFormatted === "D" || tfFormatted === "D1") intervalFormatted = "1day";
-      else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1") intervalFormatted = "1week";
-      else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M") intervalFormatted = "1month";
+      if (tfFormatted === "M1" || tfFormatted === "1MIN") intervalFormatted = "1min";
+      else if (tfFormatted === "M5" || tfFormatted === "5MIN") intervalFormatted = "5min";
+      else if (tfFormatted === "M15" || tfFormatted === "15MIN") intervalFormatted = "15min";
+      else if (tfFormatted === "M30" || tfFormatted === "30MIN") intervalFormatted = "30min";
+      else if (tfFormatted === "H1" || tfFormatted === "H1 (1 HOUR)" || tfFormatted === "1H") intervalFormatted = "1h";
+      else if (tfFormatted === "H4" || tfFormatted === "4H") intervalFormatted = "4h";
+      else if (tfFormatted === "DAILY" || tfFormatted === "D" || tfFormatted === "D1" || tfFormatted === "1DAY") intervalFormatted = "1day";
+      else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1" || tfFormatted === "1WEEK") intervalFormatted = "1week";
+      else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M" || tfFormatted === "1MONTH") intervalFormatted = "1month";
 
       let pairClean = pairToUse.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
       let twelveSymbol = pairClean;
       const isForex = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "EURGBP", "GBPJPY", "NZDUSD"].includes(pairClean);
       const isMetal = ["XAUUSD", "XAGUSD"].includes(pairClean);
-      if (isForex) {
-        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
-      } else if (isMetal) {
+      if (isForex || isMetal) {
         twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
       }
 
-      console.log(`Fetching ${twelveSymbol} ${intervalFormatted} from Twelve Data...`);
       const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(twelveSymbol)}&interval=${intervalFormatted}&apikey=${twelveKey}&outputsize=1`;
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        return res.status(resp.status).json({ status: "error", errorType: "Network Error", message: `HTTP Error: ${resp.statusText}` });
-      }
-      const rawData = await resp.json();
+      
+      // REQUIREMENT 5: Log the exact URL being called.
+      console.log(`[Twelve Data Test Backend] Calling Twelve Data API URL: ${url}`);
 
+      const resp = await fetch(url);
+      
+      // REQUIREMENT 3: Log HTTP Status and Raw Response Text after request.
+      console.log(`[Twelve Data Test Backend] Response HTTP Status: ${resp.status}`);
+      
+      let rawText = "";
+      try {
+        rawText = await resp.text();
+      } catch (readErr: any) {
+        console.error("[Twelve Data Test Backend] Failed to read response stream:", readErr);
+        return res.status(500).json({
+          status: "error",
+          errorType: "Network Error",
+          message: `Failed to read response body: ${readErr.message}`,
+          apiKeyPresent: apiKeyPresentStr,
+          httpStatus: resp.status,
+          rawResponse: "Could not read response stream.",
+          calledUrl: url
+        });
+      }
+
+      console.log(`[Twelve Data Test Backend] Raw Response Text:\n${rawText || "Empty"}`);
+
+      // REQUIREMENT 8: Replace unsafe parsing
+      let rawData: any = null;
+      try {
+        rawData = JSON.parse(rawText);
+      } catch (jsonErr: any) {
+        console.error("[Twelve Data Test Backend] Failed to parse JSON response:", jsonErr);
+        return res.status(200).json({
+          status: "error",
+          errorType: "API Error",
+          message: `Invalid non-JSON response from Twelve Data API. Raw text: ${rawText.slice(0, 200)}`,
+          apiKeyPresent: apiKeyPresentStr,
+          httpStatus: resp.status,
+          rawResponse: rawText,
+          calledUrl: url
+        });
+      }
+
+      // REQUIREMENT 7: If Twelve Data returns status: "error", display exact message.
       if (rawData && rawData.status === "error") {
-        const msg = rawData.message || "";
-        if (msg.includes("apikey") || msg.includes("api_key") || msg.includes("api key") || rawData.code === 401) {
-          return res.status(401).json({ status: "error", errorType: "Invalid API Key", message: msg });
-        } else if (msg.includes("rate limit") || msg.includes("credits") || rawData.code === 429) {
-          return res.status(429).json({ status: "error", errorType: "Rate Limit Reached", message: msg });
-        } else {
-          return res.status(400).json({ status: "error", errorType: "API Error", message: msg });
-        }
+        const msg = rawData.message || "Unknown error from Twelve Data API";
+        console.error(`[Twelve Data Test Backend] API error response: ${msg}`);
+        return res.status(200).json({
+          status: "error",
+          errorType: "API Error",
+          message: msg,
+          apiKeyPresent: apiKeyPresentStr,
+          httpStatus: resp.status,
+          rawResponse: rawText,
+          calledUrl: url
+        });
       }
 
       if (rawData && rawData.values && rawData.values.length > 0) {
-        console.log("Response received successfully");
+        console.log("[Twelve Data Test Backend] Success reading candle values.");
         const latest = rawData.values[0];
-        console.log(`Latest close price: ${latest.close}`);
+        const fetchedSymbol = rawData.meta?.symbol || twelveSymbol;
+        const fetchedInterval = rawData.meta?.interval || intervalFormatted;
 
         // REQUIREMENT 10: If selected pair ≠ fetched pair, stop execution and show "Symbol mismatch detected."
-        const fetchedSymbolClean = (rawData.meta?.symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+        const fetchedSymbolClean = fetchedSymbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
         if (fetchedSymbolClean !== pairClean) {
           console.error(`Mismatch found: Selected = ${pairClean}, Fetched = ${fetchedSymbolClean}`);
-          return res.status(400).json({ status: "error", errorType: "API Error", message: "Symbol mismatch detected." });
+          return res.status(400).json({ 
+            status: "error", 
+            errorType: "API Error", 
+            message: "Symbol mismatch detected.",
+            apiKeyPresent: apiKeyPresentStr,
+            httpStatus: resp.status,
+            rawResponse: rawText,
+            calledUrl: url
+          });
         }
 
         return res.json({
           status: "success",
-          symbol: rawData.meta?.symbol || twelveSymbol,
-          timeframe: rawData.meta?.interval || intervalFormatted,
+          apiKeyPresent: apiKeyPresentStr,
+          httpStatus: resp.status,
+          calledUrl: url,
+          symbol: fetchedSymbol,
+          timeframe: fetchedInterval,
           open: latest.open,
           high: latest.high,
           low: latest.low,
           close: latest.close,
-          timestamp: latest.datetime
+          timestamp: latest.datetime,
+          rawResponse: rawText
         });
       } else {
-        return res.status(400).json({ status: "error", errorType: "API Error", message: "Empty values array from Twelve Data API." });
+        return res.status(400).json({ 
+          status: "error", 
+          errorType: "API Error", 
+          message: "Empty values array from Twelve Data API.",
+          apiKeyPresent: apiKeyPresentStr,
+          httpStatus: resp.status,
+          rawResponse: rawText,
+          calledUrl: url
+        });
       }
     } catch (err: any) {
-      console.error("Twelve Data fetch failed:", err);
-      return res.status(500).json({ status: "error", errorType: "Network Error", message: err.message || "Failed to make HTTP request to Twelve Data." });
+      console.error("[Twelve Data Test Backend] Exception:", err);
+      return res.status(500).json({ 
+        status: "error", 
+        errorType: "Network Error", 
+        message: err.message || "Failed to make HTTP request to Twelve Data.",
+        apiKeyPresent: apiKeyPresentStr,
+        httpStatus: 500,
+        rawResponse: String(err),
+        calledUrl: `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol || "EUR/USD")}&interval=1h&apikey=***`
+      });
     }
   });
 
