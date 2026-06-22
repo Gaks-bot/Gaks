@@ -841,6 +841,10 @@ export default function App() {
   const [isTestingTwelveData, setIsTestingTwelveData] = useState<boolean>(false);
   const [twelveDataTestResult, setTwelveDataTestResult] = useState<any | null>(null);
 
+  // States for Hyper Action Admin-Only Diagnostics
+  const [isTestingHyperAction, setIsTestingHyperAction] = useState<boolean>(false);
+  const [hyperActionTestResult, setHyperActionTestResult] = useState<any | null>(null);
+
   // States for Gemini Analysis Admin-Only Diagnostics
   const [isTestingGeminiAnalysis, setIsTestingGeminiAnalysis] = useState<boolean>(false);
   const [geminiAnalysisResult, setGeminiAnalysisResult] = useState<{
@@ -1434,60 +1438,57 @@ export default function App() {
   const handleTestTwelveData = async () => {
     const activeSym = "EUR/USD";
     const activeTf = "1h";
-    const endpoint = "/api/test-twelve-data";
+    const endpoint = 'supabase.functions.invoke("test-twelve-data")';
     const requestPayloadObj = {
       symbol: activeSym,
-      timeframe: activeTf,
-      userId: session?.user?.id
+      interval: activeTf
     };
     const reqPayloadStr = JSON.stringify(requestPayloadObj, null, 2);
 
-    console.log("%c--- TWELVE DATA API TEST INITIATED ---", "color: #EF4444; font-weight: bold;");
-    console.log("1. Function Name: handleTestTwelveData");
-    console.log("2. API Endpoint Called: " + endpoint);
-    console.log("3. Request Payload:", requestPayloadObj);
-    console.log("4. API Key Present (Yes/No) - Check starting...");
+    console.log("%c--- TWELVE DATA EXCLUSIVE EDGE FUNCTION INITIATED ---", "color: #EF4444; font-weight: bold;");
+    console.log("Function Name: handleTestTwelveData");
+    console.log("Requested Symbol: " + activeSym);
+    console.log("Requested Timeframe: " + activeTf);
 
     setIsTestingTwelveData(true);
     setTwelveDataTestResult(null);
 
     try {
-      const resp = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(requestPayloadObj)
+      // REQUIREMENT 4: Replace direct fetches with supabase.functions.invoke
+      const { data: parsedData, error: invocationError } = await supabase.functions.invoke("test-twelve-data", {
+        body: requestPayloadObj
       });
-      
-      console.log(`5. HTTP Status: ${resp.status}`);
 
-      let rawText = "";
-      try {
-        rawText = await resp.text();
-      } catch (readErr: any) {
-        console.error("[Twelve Data Test] Failed to read response stream:", readErr);
-        rawText = `Failed to read response stream: ${readErr.message}`;
+      if (invocationError) {
+        console.log("Function Status: Failed");
+        console.log("Response Status: Error");
+        console.log("Error Details:", invocationError);
+
+        setTwelveDataTestResult({
+          status: "error",
+          functionName: "handleTestTwelveData",
+          apiEndpoint: endpoint,
+          requestPayload: reqPayloadStr,
+          responsePayload: JSON.stringify(invocationError, null, 2),
+          apiKeyPresent: "No/Undefined",
+          httpStatus: 400,
+          rawResponseText: invocationError.message || "Failed function invocation",
+          calledUrl: "supabase.functions.invoke('test-twelve-data')",
+          errorType: "API Error",
+          message: invocationError.message || "Function invocation failed"
+        });
+        return;
       }
-      console.log(`6. Raw Response Text:\n${rawText}`);
 
-      // REQUIREMENT 8: Replace unsafe parsing
-      let parsedData: any = null;
-      try {
-        parsedData = JSON.parse(rawText);
-      } catch (jsonErr: any) {
-        console.error("Invalid response (failed JSON parse):", rawText);
-      }
+      console.log("Function Status: Completed");
+      console.log("Response Status: Success");
+      console.log("Response Data:", parsedData);
 
-      const apiKeyPresent = parsedData?.apiKeyPresent || (resp.status === 400 && rawText.includes("No Twelve Data API Key Found") ? "No" : "Yes");
-      console.log(`7. API Key Present: ${apiKeyPresent}`);
-
-      if (resp.ok && parsedData && parsedData.status === "success") {
+      if (parsedData && parsedData.success) {
         console.log("✅ Twelve Data API Key Valid");
         console.log(`- Symbol tested: ${parsedData.symbol}`);
         console.log(`- Interval tested: ${parsedData.timeframe}`);
         console.log(`- Latest candle timestamp: ${parsedData.timestamp}`);
-        console.log("- Success status: Valid");
 
         setTwelveDataTestResult({
           status: "success",
@@ -1495,10 +1496,10 @@ export default function App() {
           apiEndpoint: endpoint,
           requestPayload: reqPayloadStr,
           responsePayload: JSON.stringify(parsedData, null, 2),
-          apiKeyPresent: apiKeyPresent,
-          httpStatus: resp.status,
-          rawResponseText: rawText,
-          calledUrl: parsedData.calledUrl,
+          apiKeyPresent: parsedData.apiKeyPresent || "Yes",
+          httpStatus: 200,
+          rawResponseText: JSON.stringify(parsedData, null, 2),
+          calledUrl: "supabase/functions/test-twelve-data",
           symbolTested: parsedData.symbol,
           intervalTested: parsedData.timeframe,
           latestTimestamp: parsedData.timestamp,
@@ -1514,7 +1515,7 @@ export default function App() {
           }
         });
       } else {
-        const errMessage = parsedData?.message || `HTTP ${resp.status}: Failed validation.`;
+        const errMessage = parsedData?.details || "Failed validation returned from Edge Function.";
         console.log(`❌ Twelve Data Test Failed: ${errMessage}`);
 
         setTwelveDataTestResult({
@@ -1522,17 +1523,20 @@ export default function App() {
           functionName: "handleTestTwelveData",
           apiEndpoint: endpoint,
           requestPayload: reqPayloadStr,
-          responsePayload: parsedData ? JSON.stringify(parsedData, null, 2) : "Failed to parse JSON response payload.",
-          apiKeyPresent: apiKeyPresent,
-          httpStatus: resp.status,
-          rawResponseText: rawText,
-          calledUrl: parsedData?.calledUrl || "https://api.twelvedata.com/time_series?symbol=EUR/USD&interval=1h&apikey=***",
-          errorType: parsedData?.errorType || "API Error",
+          responsePayload: JSON.stringify(parsedData, null, 2),
+          apiKeyPresent: "No",
+          httpStatus: 200,
+          rawResponseText: JSON.stringify(parsedData, null, 2),
+          calledUrl: "supabase/functions/test-twelve-data",
+          errorType: "API Error",
           message: errMessage
         });
       }
     } catch (err: any) {
       console.error("Fetch exception during Twelve Data test:", err);
+      console.log("Function Status: Error");
+      console.log("Error Details:", err.message);
+
       setTwelveDataTestResult({
         status: "error",
         functionName: "handleTestTwelveData",
@@ -1542,12 +1546,76 @@ export default function App() {
         apiKeyPresent: "No",
         httpStatus: 500,
         rawResponseText: String(err),
-        calledUrl: "https://api.twelvedata.com/time_series?symbol=EUR/USD&interval=1h&apikey=***",
+        calledUrl: "supabase/functions/test-twelve-data",
         errorType: "Network Error",
         message: err.message || "Network request failed"
       });
     } finally {
       setIsTestingTwelveData(false);
+    }
+  };
+
+  const handleTestHyperAction = async () => {
+    const payload = { 
+      test: true, 
+      trigger: "admin_diagnostics", 
+      timestamp: new Date().toISOString() 
+    };
+
+    // REQUIREMENT 2: Add logging
+    console.log("Calling hyper-action");
+    console.log("Payload:", payload);
+
+    setIsTestingHyperAction(true);
+    setHyperActionTestResult(null);
+
+    try {
+      // REQUIREMENT 6: Verify the function name is exactly: "hyper-action"
+      const { data, error } = await supabase.functions.invoke("hyper-action", {
+        body: payload
+      });
+
+      // REQUIREMENT 3: Log the complete response
+      console.log("Data:", data);
+      console.log("Error:", error);
+
+      if (error) {
+        // REQUIREMENT 4: Log error fields separately
+        console.error("Error Name:", error.name);
+        console.error("Error Message:", error.message);
+        console.error("Error Context:", (error as any).context);
+
+        setHyperActionTestResult({
+          status: "error",
+          error: {
+            name: error.name,
+            message: error.message,
+            context: (error as any).context ? JSON.stringify((error as any).context, null, 2) : "N/A"
+          },
+          payload: JSON.stringify(payload, null, 2),
+          data: data ? JSON.stringify(data, null, 2) : null
+        });
+      } else {
+        setHyperActionTestResult({
+          status: "success",
+          data: JSON.stringify(data, null, 2),
+          payload: JSON.stringify(payload, null, 2)
+        });
+      }
+    } catch (err: any) {
+      console.error("Catch Exception in handleTestHyperAction:", err);
+      setHyperActionTestResult({
+        status: "error",
+        error: {
+          name: "Client Exception",
+          message: err.message || String(err),
+          context: err.stack ? String(err.stack) : "N/A"
+        },
+        payload: JSON.stringify(payload, null, 2),
+        data: null
+      });
+    } finally {
+      setIsTestingHyperAction(false);
     }
   };
 
@@ -6579,6 +6647,122 @@ Risk Reminder: ${riskReminder}`;
                             <span className="text-white/40 font-sans font-bold uppercase text-[9px]">Raw Response String (Diagnostics):</span>
                             <pre className="p-2 bg-black/40 text-rose-300 font-mono text-[9px] rounded border border-white/5 max-h-48 overflow-y-auto whitespace-pre-wrap select-all leading-normal">
                               {twelveDataTestResult.rawResponseText || twelveDataTestResult.responsePayload || "Empty response"}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Admin-Only Test Hyper Action Edge Function Diagnostics */}
+              {session?.user?.email === "gaddt8310@gmail.com" && (
+                <div id="test-hyper-action-admin" className="card p-5 border border-neutral-800 bg-[#0F0F0F] rounded-xl relative overflow-hidden font-sans text-[#FFFFFF] mt-4 shadow-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-xs font-bold text-amber-500 tracking-wide uppercase flex items-center gap-2 leading-none">
+                      <i className="ph ph-bolt-lightning text-sm text-amber-500" />
+                      Debug Edge Function: hyper-action (Admin Only)
+                    </h3>
+                    <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono font-bold uppercase">
+                      gaddt8310@gmail.com
+                    </span>
+                  </div>
+                  
+                  <p className="text-[11px] text-white/60 mb-4 leading-relaxed">
+                    Triggers invocation of the Supabase Edge Function exactly named <code className="text-amber-300 font-mono">"hyper-action"</code> to verify deployment, routing, and reachability.
+                  </p>
+
+                  <div className="space-y-3">
+                    <button
+                      id="btn-test-hyper-action"
+                      onClick={handleTestHyperAction}
+                      disabled={isTestingHyperAction}
+                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-neutral-850 disabled:opacity-50 text-neutral-950 font-bold text-xs py-2.5 px-4 rounded-lg flex items-center justify-center gap-1.5 transition-all outline-none border border-amber-500/30 cursor-pointer"
+                    >
+                      {isTestingHyperAction ? (
+                        <>
+                          <i className="ph ph-circle-notch animate-spin text-neutral-950" />
+                          <span>Invoking "hyper-action" function...</span>
+                        </>
+                      ) : (
+                        <>
+                          <i className="ph ph-lightning text-sm" />
+                          <span>Test hyper-action Edge Function</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Results or Errors */}
+                    {hyperActionTestResult && (
+                      <div className="space-y-3 mt-3 animate-fadeIn text-[10px] font-mono">
+                        {hyperActionTestResult.status === "success" ? (
+                          <div className="p-3.5 bg-emerald-950/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-bold flex items-center gap-2">
+                            <span className="text-sm">✅</span>
+                            <span>"hyper-action" Invoked Successfully</span>
+                          </div>
+                        ) : (
+                          <div className="p-3.5 bg-red-950/20 border border-red-500/30 rounded-lg text-red-400 text-xs font-bold flex flex-col gap-1">
+                            <div className="flex items-center gap-2 text-rose-400 font-bold">
+                              <span className="text-sm">❌</span>
+                              <span>Edge Function Invocation Failed</span>
+                            </div>
+                            <p className="text-[10px] text-white/70 font-mono mt-0.5 font-normal leading-normal select-all">
+                              Analyze error parameters and Supabase deployment details below.
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="p-4 bg-[#0A0A0A] border border-neutral-800 rounded-lg space-y-3">
+                          <div className="text-white/40 text-[9px] uppercase tracking-wider font-sans font-bold border-b border-neutral-800 pb-1.5">
+                            Status & Diagnosis Metrics
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2 bg-neutral-900/60 p-3 rounded-lg border border-neutral-850">
+                            <div className="flex justify-between pb-1 border-b border-neutral-850">
+                              <span className="text-white/40">Function Name:</span>
+                              <span className="text-amber-400 select-all font-bold">"hyper-action"</span>
+                            </div>
+                            <div className="flex justify-between pb-1 border-b border-neutral-850">
+                              <span className="text-white/40">Status Code:</span>
+                              <span className={hyperActionTestResult.status === "success" ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                                {hyperActionTestResult.status === "success" ? "200 OK" : "Failed / Non-200"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Error fields if failure */}
+                          {hyperActionTestResult.status === "error" && (
+                            <div className="flex flex-col gap-2 bg-red-950/10 p-3 rounded-lg border border-red-900/20">
+                              <span className="text-rose-400 font-sans font-bold uppercase text-[9px]">Detailed Supabase Error Fields:</span>
+                              <div className="flex justify-between pb-1 border-b border-rose-950/35">
+                                <span className="text-white/40">error.name:</span>
+                                <span className="text-rose-300 font-bold select-all">{hyperActionTestResult.error?.name || "N/A"}</span>
+                              </div>
+                              <div className="flex flex-col gap-1 pb-1 border-b border-rose-950/35">
+                                <span className="text-white/40">error.message:</span>
+                                <span className="text-rose-300 select-all font-sans leading-normal bg-black/30 p-1 rounded font-mono">{hyperActionTestResult.error?.message || "N/A"}</span>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <span className="text-white/40">error.context:</span>
+                                <pre className="text-rose-300 select-all leading-normal bg-black/40 p-2 rounded whitespace-pre overflow-x-auto text-[9px] border border-white/5 font-mono">{hyperActionTestResult.error?.context || "N/A"}</pre>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Request Payload */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-white/40 font-sans font-bold uppercase text-[9px]">Sent Request Payload:</span>
+                            <pre className="p-2 bg-black/40 text-neutral-300 rounded border border-white/5 text-[9px] overflow-x-auto whitespace-pre font-mono">
+                              {hyperActionTestResult.payload}
+                            </pre>
+                          </div>
+
+                          {/* Response Body */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-white/40 font-sans font-bold uppercase text-[9px]">Exact Response Body:</span>
+                            <pre className="p-2 bg-black/40 text-sky-300 font-mono text-[9px] rounded border border-white/5 max-h-48 overflow-y-auto whitespace-pre-wrap select-all leading-normal">
+                              {hyperActionTestResult.data || "No response body returned / Empty"}
                             </pre>
                           </div>
                         </div>

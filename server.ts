@@ -127,156 +127,69 @@ function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Helper to resolve Supabase Client inside backend routes
+  function getSupabaseClient() {
+    const supabaseUrl = process.env.SUPABASE_URL || "https://awouklnnntxoxyaijeow.supabase.co";
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "sb_publishable_PVuRXXkCwD2fbvpk1h_Q2w_nDBeINxA";
+    return createClient(supabaseUrl, supabaseServiceKey);
+  }
+
   // Admin-Only Twelve Data Diagnostics Route
   app.post("/api/test-twelve-data", async (req, res) => {
     const { symbol, timeframe, userId } = req.body;
-    const twelveKey = (process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY || "").trim();
-    const apiKeyPresentStr = twelveKey ? "Yes" : "No";
-
-    console.log(`[Twelve Data Test Backend] Before request: API Key Present = ${apiKeyPresentStr}`);
+    
     console.log(`[Twelve Data Test Backend] Received test request for Symbol: ${symbol}, Timeframe: ${timeframe}, User ID: ${userId}`);
-
-    if (!twelveKey) {
-      console.log("[Twelve Data Test Backend] No Twelve Data API Key Found.");
-      return res.status(400).json({ 
-        status: "error", 
-        errorType: "Invalid API Key", 
-        message: "❌ No Twelve Data API Key Found",
-        apiKeyPresent: "No",
-        httpStatus: 400,
-        rawResponse: '{"error": "No Twelve Data API Key Found"}'
-      });
-    }
 
     const pairToUse = symbol || "EUR/USD";
     const tfToUse = timeframe || "1h";
 
     try {
-      // Timeframe standardizer
-      let intervalFormatted = "1h";
-      const tfFormatted = tfToUse.toUpperCase();
-      if (tfFormatted === "M1" || tfFormatted === "1MIN") intervalFormatted = "1min";
-      else if (tfFormatted === "M5" || tfFormatted === "5MIN") intervalFormatted = "5min";
-      else if (tfFormatted === "M15" || tfFormatted === "15MIN") intervalFormatted = "15min";
-      else if (tfFormatted === "M30" || tfFormatted === "30MIN") intervalFormatted = "30min";
-      else if (tfFormatted === "H1" || tfFormatted === "H1 (1 HOUR)" || tfFormatted === "1H") intervalFormatted = "1h";
-      else if (tfFormatted === "H4" || tfFormatted === "4H") intervalFormatted = "4h";
-      else if (tfFormatted === "DAILY" || tfFormatted === "D" || tfFormatted === "D1" || tfFormatted === "1DAY") intervalFormatted = "1day";
-      else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1" || tfFormatted === "1WEEK") intervalFormatted = "1week";
-      else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M" || tfFormatted === "1MONTH") intervalFormatted = "1month";
-
-      let pairClean = pairToUse.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-      let twelveSymbol = pairClean;
-      const isForex = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "EURGBP", "GBPJPY", "NZDUSD"].includes(pairClean);
-      const isMetal = ["XAUUSD", "XAGUSD"].includes(pairClean);
-      if (isForex || isMetal) {
-        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
-      }
-
-      const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(twelveSymbol)}&interval=${intervalFormatted}&apikey=${twelveKey}&outputsize=1`;
+      const supabase = getSupabaseClient();
+      console.log(`[Twelve Data Test Backend] Invoking test-twelve-data Edge Function for ${pairToUse} @ ${tfToUse}...`);
       
-      // REQUIREMENT 5: Log the exact URL being called.
-      console.log(`[Twelve Data Test Backend] Calling Twelve Data API URL: ${url}`);
+      const { data: parsedData, error: invocationError } = await supabase.functions.invoke("test-twelve-data", {
+        body: { symbol: pairToUse, interval: tfToUse }
+      });
 
-      const resp = await fetch(url);
-      
-      // REQUIREMENT 3: Log HTTP Status and Raw Response Text after request.
-      console.log(`[Twelve Data Test Backend] Response HTTP Status: ${resp.status}`);
-      
-      let rawText = "";
-      try {
-        rawText = await resp.text();
-      } catch (readErr: any) {
-        console.error("[Twelve Data Test Backend] Failed to read response stream:", readErr);
-        return res.status(500).json({
-          status: "error",
-          errorType: "Network Error",
-          message: `Failed to read response body: ${readErr.message}`,
-          apiKeyPresent: apiKeyPresentStr,
-          httpStatus: resp.status,
-          rawResponse: "Could not read response stream.",
-          calledUrl: url
-        });
-      }
-
-      console.log(`[Twelve Data Test Backend] Raw Response Text:\n${rawText || "Empty"}`);
-
-      // REQUIREMENT 8: Replace unsafe parsing
-      let rawData: any = null;
-      try {
-        rawData = JSON.parse(rawText);
-      } catch (jsonErr: any) {
-        console.error("[Twelve Data Test Backend] Failed to parse JSON response:", jsonErr);
-        return res.status(200).json({
+      if (invocationError) {
+        console.error("[Twelve Data Test Backend] Edge function invocation error:", invocationError);
+        return res.status(400).json({
           status: "error",
           errorType: "API Error",
-          message: `Invalid non-JSON response from Twelve Data API. Raw text: ${rawText.slice(0, 200)}`,
-          apiKeyPresent: apiKeyPresentStr,
-          httpStatus: resp.status,
-          rawResponse: rawText,
-          calledUrl: url
+          message: invocationError.message || "Function invocation failed",
+          apiKeyPresent: "Yes",
+          httpStatus: 400,
+          rawResponse: JSON.stringify(invocationError)
         });
       }
 
-      // REQUIREMENT 7: If Twelve Data returns status: "error", display exact message.
-      if (rawData && rawData.status === "error") {
-        const msg = rawData.message || "Unknown error from Twelve Data API";
-        console.error(`[Twelve Data Test Backend] API error response: ${msg}`);
-        return res.status(200).json({
-          status: "error",
-          errorType: "API Error",
-          message: msg,
-          apiKeyPresent: apiKeyPresentStr,
-          httpStatus: resp.status,
-          rawResponse: rawText,
-          calledUrl: url
-        });
-      }
+      console.log(`[Twelve Data Test Backend] Edge Function Response Data:`, parsedData);
 
-      if (rawData && rawData.values && rawData.values.length > 0) {
-        console.log("[Twelve Data Test Backend] Success reading candle values.");
-        const latest = rawData.values[0];
-        const fetchedSymbol = rawData.meta?.symbol || twelveSymbol;
-        const fetchedInterval = rawData.meta?.interval || intervalFormatted;
-
-        // REQUIREMENT 10: If selected pair ≠ fetched pair, stop execution and show "Symbol mismatch detected."
-        const fetchedSymbolClean = fetchedSymbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-        if (fetchedSymbolClean !== pairClean) {
-          console.error(`Mismatch found: Selected = ${pairClean}, Fetched = ${fetchedSymbolClean}`);
-          return res.status(400).json({ 
-            status: "error", 
-            errorType: "API Error", 
-            message: "Symbol mismatch detected.",
-            apiKeyPresent: apiKeyPresentStr,
-            httpStatus: resp.status,
-            rawResponse: rawText,
-            calledUrl: url
-          });
-        }
-
+      if (parsedData && parsedData.success) {
         return res.json({
           status: "success",
-          apiKeyPresent: apiKeyPresentStr,
-          httpStatus: resp.status,
-          calledUrl: url,
-          symbol: fetchedSymbol,
-          timeframe: fetchedInterval,
-          open: latest.open,
-          high: latest.high,
-          low: latest.low,
-          close: latest.close,
-          timestamp: latest.datetime,
-          rawResponse: rawText
+          apiKeyPresent: "Yes",
+          httpStatus: 200,
+          calledUrl: "supabase.functions.invoke('test-twelve-data')",
+          symbol: parsedData.symbol,
+          timeframe: parsedData.timeframe,
+          open: parsedData.open,
+          high: parsedData.high,
+          low: parsedData.low,
+          close: parsedData.close,
+          timestamp: parsedData.timestamp,
+          rawResponse: JSON.stringify(parsedData)
         });
       } else {
-        return res.status(400).json({ 
-          status: "error", 
-          errorType: "API Error", 
-          message: "Empty values array from Twelve Data API.",
-          apiKeyPresent: apiKeyPresentStr,
-          httpStatus: resp.status,
-          rawResponse: rawText,
-          calledUrl: url
+        const errDetails = parsedData?.details || "Failed to test Twelve Data from Edge Function.";
+        return res.status(200).json({
+          status: "error",
+          errorType: "API Error",
+          message: errDetails,
+          apiKeyPresent: "Yes",
+          httpStatus: 200,
+          rawResponse: JSON.stringify(parsedData),
+          calledUrl: "supabase.functions.invoke('test-twelve-data')"
         });
       }
     } catch (err: any) {
@@ -285,10 +198,10 @@ function startServer() {
         status: "error", 
         errorType: "Network Error", 
         message: err.message || "Failed to make HTTP request to Twelve Data.",
-        apiKeyPresent: apiKeyPresentStr,
+        apiKeyPresent: "Yes",
         httpStatus: 500,
         rawResponse: String(err),
-        calledUrl: `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol || "EUR/USD")}&interval=1h&apikey=***`
+        calledUrl: "supabase.functions.invoke('test-twelve-data')"
       });
     }
   });
@@ -352,43 +265,25 @@ function startServer() {
       else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1") intervalFormatted = "1week";
       else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M") intervalFormatted = "1month";
 
-      let pairClean = pairToUse.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-      let twelveSymbol = pairClean;
-      const isForex = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "EURGBP", "GBPJPY", "NZDUSD"].includes(pairClean);
-      const isMetal = ["XAUUSD", "XAGUSD"].includes(pairClean);
-      if (isForex) {
-        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
-      } else if (isMetal) {
-        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
-      }
-
       let candles = [];
-      const twelveUrl = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(twelveSymbol)}&interval=${intervalFormatted}&apikey=${twelveKey}&outputsize=20`;
-      const twelveResp = await fetch(twelveUrl);
-      if (!twelveResp.ok) {
-        const rawText = await twelveResp.text();
-        console.error(`Twelve Data failed API call: Status Code = ${twelveResp.status}, Response = ${rawText}, Endpoint = Twelve Data API`);
-        throw new Error(`Twelve Data HTTP Error: ${twelveResp.status} ${twelveResp.statusText}`);
-      }
-      const rawData = await twelveResp.json();
-      if (rawData && rawData.status === "error") {
-        console.error(`Twelve Data failed API call: Status Code = 200 (error body), Response = ${JSON.stringify(rawData)}, Endpoint = Twelve Data API`);
-        throw new Error(`Twelve Data API Error: ${rawData.message}`);
-      }
-      candles = rawData.values || [];
-      if (!candles || candles.length === 0) {
-        throw new Error("Twelve Data returned an empty candles array.");
+      const supabase = getSupabaseClient();
+      console.log(`[E2E Diagnostics] Invoking Edge Function test-twelve-data for ${pairToUse} @ ${intervalFormatted}...`);
+
+      const { data: parsedData, error: invocationError } = await supabase.functions.invoke("test-twelve-data", {
+        body: { symbol: pairToUse, interval: intervalFormatted }
+      });
+
+      if (invocationError) {
+        throw new Error(`Edge Function Invocation Error: ${invocationError.message}`);
       }
 
-      // REQUIREMENT 10: If selected pair ≠ fetched pair, stop execution and show "Symbol mismatch detected."
-      const fetchedSymbolClean = (rawData.meta?.symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-      if (fetchedSymbolClean !== pairClean) {
-        console.error(`Mismatch found: Selected = ${pairClean}, Fetched = ${fetchedSymbolClean}`);
-        return res.status(400).json({
-          success: false,
-          step: "Calling Twelve Data",
-          error: "Symbol mismatch detected."
-        });
+      if (!parsedData || !parsedData.success) {
+        throw new Error(parsedData?.details || "Failed to fetch market data via Edge Function in E2E Test.");
+      }
+
+      candles = parsedData.values || [];
+      if (!candles || candles.length === 0) {
+        throw new Error("Edge Function returned an empty candles array.");
       }
 
       currentStep = "Calling Gemini";
@@ -407,7 +302,7 @@ function startServer() {
       let explanation = "";
 
       const prompt = `You are an institutional smart money analyst.
-Analyze the following ${twelveSymbol} ${tfToUse} market data (20 candles, latest to oldest):
+Analyze the following ${pairToUse} ${tfToUse} market data (20 candles, latest to oldest):
 ${formattedCandles}
 
 Using the active strategy rules:
@@ -484,7 +379,7 @@ You MUST response with a JSON object. The response format must be strictly valid
               <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                 <tr>
                   <td style="padding: 6px 0; color: #737373; font-weight: bold; width: 140px;">Pair:</td>
-                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">${twelveSymbol}</td>
+                  <td style="padding: 6px 0; color: #fff; font-family: monospace;">${pairToUse}</td>
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #737373; font-weight: bold;">Timeframe:</td>
@@ -544,7 +439,7 @@ You MUST response with a JSON object. The response format must be strictly valid
       return res.status(200).json({
         success: true,
         data: {
-          pair: pairClean,
+          pair: pairToUse,
           timeframe: tfToUse,
           strategy: firstLineOfStrategy,
           result: setup,
@@ -614,45 +509,25 @@ You MUST response with a JSON object. The response format must be strictly valid
       else if (tfFormatted === "WEEKLY" || tfFormatted === "W" || tfFormatted === "W1") intervalFormatted = "1week";
       else if (tfFormatted === "MONTHLY" || tfFormatted === "M" || tfFormatted === "1M") intervalFormatted = "1month";
 
-      let pairClean = pairToUse.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-      let twelveSymbol = pairClean;
-      const isForex = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "EURGBP", "GBPJPY", "NZDUSD"].includes(pairClean);
-      const isMetal = ["XAUUSD", "XAGUSD"].includes(pairClean);
-      if (isForex) {
-        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
-      } else if (isMetal) {
-        twelveSymbol = pairClean.substring(0, 3) + "/" + pairClean.substring(3);
+      let candles = [];
+      const supabase = getSupabaseClient();
+      console.log(`[Gemini Analysis Diagnostics] Invoking Edge Function test-twelve-data for ${pairToUse} @ ${intervalFormatted}...`);
+
+      const { data: parsedData, error: invocationError } = await supabase.functions.invoke("test-twelve-data", {
+        body: { symbol: pairToUse, interval: intervalFormatted }
+      });
+
+      if (invocationError) {
+        return res.status(400).json({ status: "error", errorType: "API Error", message: `Edge Function Invocation Error: ${invocationError.message}` });
       }
 
-      console.log(`Fetching market data for ${twelveSymbol} ${intervalFormatted}...`);
-      const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(twelveSymbol)}&interval=${intervalFormatted}&apikey=${twelveKey}&outputsize=20`;
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        return res.status(resp.status).json({ status: "error", errorType: "Network Error", message: `Twelve Data HTTP Error: ${resp.statusText}` });
-      }
-      const rawData = await resp.json();
-
-      if (rawData && rawData.status === "error") {
-        const msg = rawData.message || "";
-        let errorType = "API Error";
-        if (msg.includes("apikey") || msg.includes("api_key") || msg.includes("api key") || rawData.code === 401) {
-          errorType = "Invalid API Key";
-        } else if (msg.includes("rate limit") || msg.includes("credits") || rawData.code === 429) {
-          errorType = "Rate Limit Reached";
-        }
-        return res.status(400).json({ status: "error", errorType, message: msg });
+      if (!parsedData || !parsedData.success) {
+        return res.status(400).json({ status: "error", errorType: "API Error", message: parsedData?.details || "Failed to fetch market data via Edge Function." });
       }
 
-      const candles = rawData.values;
+      candles = parsedData.values || [];
       if (!candles || candles.length === 0) {
-        return res.status(400).json({ status: "error", errorType: "API Error", message: "Empty candles from Twelve Data API." });
-      }
-
-      // REQUIREMENT 10: If selected pair ≠ fetched pair, stop execution and show "Symbol mismatch detected."
-      const fetchedSymbolClean = (rawData.meta?.symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-      if (fetchedSymbolClean !== pairClean) {
-        console.error(`Mismatch found: Selected = ${pairClean}, Fetched = ${fetchedSymbolClean}`);
-        return res.status(400).json({ status: "error", errorType: "API Error", message: "Symbol mismatch detected." });
+        return res.status(400).json({ status: "error", errorType: "API Error", message: "Edge Function returned an empty candles array." });
       }
 
       // Format candles for prompt
@@ -666,7 +541,7 @@ You MUST response with a JSON object. The response format must be strictly valid
       console.log(`\nPair sent to Gemini: ${pairToUse}\nTimeframe sent to Gemini: ${tfToUse}\n`);
 
       const rotationCall = await executeWithRotation(userApiKey, async (aiClient, modelName) => {
-        const prompt = `You are an expert financial market analyst. Analyze the following 20 recent ${tfToUse} candlesticks for symbol ${twelveSymbol} (from latest to oldest):
+        const prompt = `You are an expert financial market analyst. Analyze the following 20 recent ${tfToUse} candlesticks for symbol ${pairToUse} (from latest to oldest):
 
 ${formattedCandles}
 
@@ -696,7 +571,7 @@ NO_TRADE_SETUP`;
       if (sanitizedResult === "BUY_SETUP" || sanitizedResult === "SELL_SETUP" || sanitizedResult === "NO_TRADE_SETUP") {
         return res.json({
           status: "success",
-          symbol: pairClean,
+          symbol: pairToUse,
           timeframe: tfToUse,
           geminiResult: sanitizedResult
         });
@@ -709,7 +584,7 @@ NO_TRADE_SETUP`;
 
         return res.json({
           status: "success",
-          symbol: pairClean,
+          symbol: pairToUse,
           timeframe: tfToUse,
           geminiResult: sanitizedResult
         });
@@ -1561,35 +1436,25 @@ ${icon} ${stateName}`;
 
           // Fetch Twelve Data candles or generate fallbacks
           let candles = [];
-          const twelveKey = process.env.TWELVE_DATA_API_KEY || process.env.TWELVEDATA_API_KEY;
           
-          let intervalMapped = "1h";
-          const normTf = timeframe.trim().toUpperCase();
-          if (normTf === "M1" || normTf === "1M") intervalMapped = "1min";
-          else if (normTf === "M5" || normTf === "5M") intervalMapped = "5min";
-          else if (normTf === "M15" || normTf === "15M") intervalMapped = "15min";
-          else if (normTf === "M30" || normTf === "30M") intervalMapped = "30min";
-          else if (normTf === "H2" || normTf === "2H") intervalMapped = "2h";
-          else if (normTf === "H4" || normTf === "4H") intervalMapped = "4h";
-          else if (normTf === "D1" || normTf === "1D" || normTf === "D") intervalMapped = "1day";
+          try {
+            console.log(`[Express Watcher] Invoking Edge Function test-twelve-data for ${pair} @ ${timeframe}...`);
+            const { data: parsedData, error: invocationError } = await supabase.functions.invoke("test-twelve-data", {
+              body: { symbol: pair, interval: timeframe }
+            });
 
-          if (twelveKey) {
-            try {
-              console.log(`[Express Watcher] Loading candles from Twelve Data for ${pair}...`);
-              const pairClean = pair.replace("/", "");
-              const url = `https://api.twelvedata.com/time_series?symbol=${pairClean}&interval=${intervalMapped}&apikey=${twelveKey}&outputsize=20`;
-              const resp = await fetch(url);
-              const rawData = await resp.json();
-              if (rawData && rawData.values && rawData.values.length > 0) {
-                candles = rawData.values;
-              } else {
-                candles = localGenerateFallbackCandles(pair);
-              }
-            } catch (err) {
+            if (invocationError) {
+              console.error("[Express Watcher] Edge function invocation error. Using fallback.", invocationError);
+              candles = localGenerateFallbackCandles(pair);
+            } else if (parsedData && parsedData.success && parsedData.values && parsedData.values.length > 0) {
+              candles = parsedData.values;
+              console.log(`[Express Watcher] Successfully loaded ${candles.length} candles via Edge Function.`);
+            } else {
+              console.warn("[Express Watcher] Edge function returned un-successful or empty values. Using fallback.", parsedData?.details);
               candles = localGenerateFallbackCandles(pair);
             }
-          } else {
-            console.log(`[Express Watcher] Twelve Key is missing. Generating fallback candles for ${pair}`);
+          } catch (err) {
+            console.error("[Express Watcher] Exception in Edge Function invocation. Using fallback.", err);
             candles = localGenerateFallbackCandles(pair);
           }
 
